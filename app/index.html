@@ -214,7 +214,12 @@
     // (старые движки Tizen не снимают их при document.open)
     document.removeEventListener('keydown', onKey);
     if (timer) { clearInterval(timer); timer = null; }
-    var head = '<base href="' + url + '/"><script>window.TS_SERVER = ' + JSON.stringify(url) + ';<\/script>';
+    // webapis.js (webapis.avplay — плеер с дорожками и субтитрами, фронтенд:
+    // js/tizen-avplay.js) — ДО <base>: путь $WEBAPIS/… движок пакета узнаёт
+    // только относительно самой страницы, а не сервера. На Tizen 9 webapis есть
+    // и без него; нет файла — просто ошибка загрузки, страница грузится дальше
+    var head = '<script src="$WEBAPIS/webapis/webapis.js"><\/script>' +
+      '<base href="' + url + '/"><script>window.TS_SERVER = ' + JSON.stringify(url) + ';<\/script>';
     if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, function (m) { return m + head; });
     else html = head + html;
     document.open();
