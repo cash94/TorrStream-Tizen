@@ -5,17 +5,23 @@
 <meta name="viewport" content="width=1920, initial-scale=1">
 <title>TorrStream</title>
 <!--
-  Запускалка TorrStream для Samsung Tizen — та же, что в TorrStream-webOS.
-  Сам интерфейс в wgt не лежит: он открывается с сервера TorrStream, как на
+  Запускалка TorrStream для Samsung Tizen. Сам интерфейс в wgt не лежит: его
+  разметка приходит с сервера TorrStream, скрипты и стили — с зеркала, как на
   webOS, Vidaa и в Android-приложении, — поэтому обновляется без переустановки.
 
   При старте открываем сохранённый адрес (по умолчанию общий
   http://torrstream.online). Пока идёт отсчёт, ОК или любая стрелка
   показывают форму смены адреса. Сервер не ответил — сразу форма с ошибкой.
 
-  К адресу добавляем ?tsapp=tizen: по ней фронтенд узнаёт приложение
-  (config.js: detectTizenApp), если прошивка не даёт открытой с сервера
-  странице Device API. Медиаклавиши регистрируем здесь же, до перехода.
+  На сервер НЕ переходим: страница остаётся в пакете (file://), а HTML с
+  сервера пишется в неё (boot). Chrome 94+ (Tizen 7+) не пускает страницу с
+  публичного http-адреса к TorrServer в домашней сети (Private Network
+  Access), а страницу из пакета пускает — проверено на Tizen 9 (probe/).
+  В HTML добавляем <base href> на сервер (относительные /api, /hls, картинки
+  идут туда) и window.TS_SERVER — от него во фронтенде SERVER_URL, вход по
+  токену и воркеры из Blob (public/js/config.js). location.reload() во
+  фронтенде перезапускает эту страницу — тогда без отсчёта, сразу boot.
+  Медиаклавиши регистрируем здесь же.
 
   ES5 без зависимостей: Tizen 2.4–4 (ТВ 2016–2018) — движок уровня Chrome 47–56.
 -->
@@ -64,6 +70,9 @@
 (function () {
   var DEFAULT_URL = 'http://torrstream.online';
   var KEY = 'torrstreamServerUrl';
+  // Адрес, с которого уже загружен интерфейс в этом запуске приложения:
+  // перезагрузка страницы фронтендом — сразу boot, без отсчёта и формы
+  var BOOT_KEY = 'tsBootServer';
   var COUNTDOWN = 3;
   // 10009 — «Назад» (Return) пульта Samsung; 65376/65385 — «Готово»/«Отмена»
   // экранной клавиатуры Tizen
@@ -164,12 +173,65 @@
     probe(url, function (ok) {
       if (!ok) { showForm(url.replace(/^https?:\/\//, '') + ' — не отвечает или это не сервер TorrStream', true, url); return; }
       save(url);
-      location.replace(url + '/?tsapp=tizen');
+      boot(url);
     });
+  }
+
+  function authToken() {
+    try { return localStorage.getItem('authToken') || ''; } catch (e) { return ''; }
+  }
+
+  /**
+   * HTML интерфейса с сервера — в эту страницу. Сервер сам решает, что отдать:
+   * приложение или страницу входа (services/access.js), поэтому идём с токеном
+   * входа, если он есть. location.search (?local=1 при отладке на ПК) — дальше,
+   * как обычно: сервер отдаст локальный public/index.html.
+   */
+  function boot(url) {
+    try { sessionStorage.setItem(BOOT_KEY, url); sessionStorage.setItem('tsApp', 'tizen'); } catch (e) { }
+    var x = new XMLHttpRequest();
+    var fail = function (why) {
+      try { sessionStorage.removeItem(BOOT_KEY); } catch (e) { }
+      showForm(url.replace(/^https?:\/\//, '') + ' — ' + why, true, url);
+    };
+    try {
+      x.open('GET', url + '/' + location.search, true);
+      x.timeout = 20000;
+      var token = authToken();
+      if (token) x.setRequestHeader('Authorization', 'Bearer ' + token);
+      x.onload = function () {
+        if (x.status !== 200 || !/<html/i.test(x.responseText)) { fail('не удалось загрузить интерфейс (HTTP ' + x.status + ')'); return; }
+        write(x.responseText, url);
+      };
+      x.onerror = function () { fail('не удалось загрузить интерфейс'); };
+      x.ontimeout = function () { fail('интерфейс не загрузился за 20 секунд'); };
+      x.send();
+    } catch (e) { fail(e.message || 'ошибка'); }
+  }
+
+  function write(html, url) {
+    // Слушатели запускалки на document новая страница унаследовала бы
+    // (старые движки Tizen не снимают их при document.open)
+    document.removeEventListener('keydown', onKey);
+    if (timer) { clearInterval(timer); timer = null; }
+    var head = '<base href="' + url + '/"><script>window.TS_SERVER = ' + JSON.stringify(url) + ';<\/script>';
+    if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, function (m) { return m + head; });
+    else html = head + html;
+    document.open();
+    document.write(html);
+    document.close();
   }
 
   function start() {
     var url = saved();
+    // Перезагрузка интерфейса (location.reload во фронтенде) — сразу на сервер
+    var booted = '';
+    try { booted = sessionStorage.getItem(BOOT_KEY) || ''; } catch (e) { }
+    if (booted) {
+      statusEl.textContent = 'Загрузка TorrStream…';
+      boot(booted);
+      return;
+    }
     var left = COUNTDOWN;
     statusEl.textContent = 'Открываю ' + url.replace(/^https?:\/\//, '') + '…';
     hintEl.textContent = 'ОК — изменить адрес сервера';
@@ -182,7 +244,7 @@
   openBtn.onclick = function () { go(input.value); };
   resetBtn.onclick = function () { input.value = DEFAULT_URL; setFocus(1); };
 
-  document.addEventListener('keydown', function (e) {
+  function onKey(e) {
     var k = e.keyCode;
     if (form.style.display !== 'block') {
       // Отсчёт: ОК или стрелка — сменить адрес; «Назад» — выход
@@ -205,7 +267,8 @@
     } else if (k === KEYS.OK || k === KEYS.IME_DONE) {
       e.preventDefault(); go(input.value);
     }
-  });
+  }
+  document.addEventListener('keydown', onKey);
 
   // Указатель Smart Remote: наведение — тот же фокус
   for (var i = 0; i < focusables.length; i++) {

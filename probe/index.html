@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>TorrStream — проверка</title>
+<!--
+  Проверка перед переездом TorrStream внутрь wgt (шаг 0 плана): что может
+  страница, лежащая в пакете, а не открытая с torrstream.online.
+  Chrome 94+ (Tizen 7+) не пускает http-страницу с публичного адреса в
+  домашнюю сеть (Private Network Access). Здесь видно, пускает ли он страницу
+  из пакета: к TorrServer в сети, к 127.0.0.1, к серверу TorrStream с
+  Authorization, <video> с TorrServer, Worker из Blob — и, последней кнопкой,
+  запуск самого интерфейса внутри wgt (document.write + <base>).
+  Результат — на экране, его фотографируют.
+-->
+<style>
+  html, body { margin: 0; background: #0b0b0f; color: #e8e8ee; font: 22px/1.35 "SamsungOne", Roboto, Arial, sans-serif; }
+  body { padding: 28px 48px; box-sizing: border-box; }
+  h1 { margin: 0 0 14px; font-size: 34px; }
+  h1 span { color: #ff8c00; }
+  .cols { display: flex; }
+  .left { width: 560px; margin-right: 40px; flex: none; }
+  .right { flex: 1; min-width: 0; }
+  label { display: block; color: #9a9aa6; font-size: 19px; margin: 10px 0 4px; }
+  input { width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 24px; background: #17171d; color: #fff;
+          border: 3px solid #24242c; border-radius: 10px; outline: none; }
+  button { display: block; width: 100%; margin-top: 12px; font-size: 24px; padding: 12px 16px; border-radius: 10px;
+           border: 3px solid transparent; background: #26262e; color: #fff; outline: none; text-align: left; }
+  button.primary { background: #ff8c00; color: #000; font-weight: bold; }
+  .focus { border-color: #ff8c00 !important; }
+  button.primary.focus { border-color: #fff !important; }
+  .hint { color: #6b6b78; font-size: 18px; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 5px 8px; border-bottom: 1px solid #1f1f27; vertical-align: top; font-size: 20px; word-break: break-all; }
+  td.n { width: 330px; color: #b4b4c0; word-break: normal; }
+  td.r { width: 48px; text-align: center; font-weight: bold; }
+  .ok { color: #5ad17a; } .bad { color: #ff6a6a; } .wait { color: #e0b84a; } .info { color: #7fb2ff; }
+  video { width: 320px; height: 180px; background: #000; margin-top: 12px; }
+</style>
+</head>
+<body>
+<h1>Torr<span>Stream</span> · проверка страницы в пакете</h1>
+<div class="cols">
+  <div class="left">
+    <label for="ts">TorrServer в домашней сети</label>
+    <input id="ts" type="text" autocomplete="off" spellcheck="false" placeholder="192.168.1.50:8090">
+    <label for="srv">Сервер TorrStream</label>
+    <input id="srv" type="text" autocomplete="off" spellcheck="false">
+    <button class="primary" id="run">▶ Запустить проверку</button>
+    <button id="ui">Открыть интерфейс TorrStream внутри wgt</button>
+    <button id="quit">Выход</button>
+    <div class="hint">Стрелки — выбор, ОК — нажать, «Назад» — выход.<br>
+      Видео: первый торрент из списка TorrServer, самый большой файл.</div>
+    <video id="v" muted playsinline></video>
+  </div>
+  <div class="right"><table id="out"></table></div>
+</div>
+<script>
+(function () {
+  var LS_TS = 'probeTorrServer', LS_SRV = 'probeServer';
+  var DEFAULT_SRV = 'http://torrstream.online';
+  var KEYS = { UP: 38, DOWN: 40, OK: 13, BACK: 10009, ESC: 27, IME_DONE: 65376, IME_CANCEL: 65385 };
+  var tsInput = document.getElementById('ts');
+  var srvInput = document.getElementById('srv');
+  var out = document.getElementById('out');
+  var video = document.getElementById('v');
+  var focusables = [tsInput, srvInput, document.getElementById('run'), document.getElementById('ui'), document.getElementById('quit')];
+  var focusIdx = 2;
+
+  function ls(k, v) {
+    try { if (v === undefined) return localStorage.getItem(k) || ''; localStorage.setItem(k, v); } catch (e) { return ''; }
+  }
+  function norm(url, def) {
+    url = String(url || '').replace(/^\s+|\s+$/g, '').replace(/\/+$/, '');
+    if (!url) return def || '';
+    if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+    return url;
+  }
+  tsInput.value = ls(LS_TS);
+  srvInput.value = ls(LS_SRV) || DEFAULT_SRV;
+
+  // ---- Таблица результатов ----
+  function row(name) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="n"></td><td class="r wait">…</td><td class="d"></td>';
+    tr.firstChild.textContent = name;
+    out.appendChild(tr);
+    return {
+      set: function (state, text) {
+        var mark = { ok: '✓', bad: '✗', wait: '…', info: 'i' }[state] || '?';
+        tr.childNodes[1].className = 'r ' + state;
+        tr.childNodes[1].textContent = mark;
+        tr.childNodes[2].textContent = text == null ? '' : String(text);
+      }
+    };
+  }
+  function errText(e) {
+    if (!e) return 'ошибка';
+    return (e.name ? e.name + ': ' : '') + (e.message || String(e));
+  }
+
+  // fetch с таймаутом; ответ — {status, text, headers}
+  function get(url, opts, ms) {
+    opts = opts || {};
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    if (ctrl) opts.signal = ctrl.signal;
+    var t = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms || 6000);
+    var t0 = Date.now();
+    return fetch(url, opts).then(function (r) {
+      return r.text().then(function (text) {
+        clearTimeout(t);
+        return { status: r.status, text: text, ms: Date.now() - t0, type: r.type };
+      });
+    }, function (e) { clearTimeout(t); throw e; });
+  }
+  function xhr(url, ms) {
+    return new Promise(function (resolve, reject) {
+      var x = new XMLHttpRequest();
+      x.open('GET', url, true);
+      x.timeout = ms || 6000;
+      x.onload = function () { resolve({ status: x.status, text: x.responseText }); };
+      x.onerror = function () { reject(new Error('XHR onerror')); };
+      x.ontimeout = function () { reject(new Error('XHR timeout')); };
+      x.send();
+    });
+  }
+  function short(s) { s = String(s || '').replace(/\s+/g, ' '); return s.length > 90 ? s.slice(0, 90) + '…' : s; }
+
+  // Каждая проверка — функция, возвращающая Promise; идут по очереди, чтобы
+  // таймауты одной не путались с другой
+  function check(name, fn) {
+    var r = row(name);
+    return function () {
+      return Promise.resolve().then(fn).then(function (res) {
+        if (res && res.state) r.set(res.state, res.text); else r.set('ok', res);
+      }, function (e) { r.set('bad', errText(e)); });
+    };
+  }
+
+  function run() {
+    var ts = norm(tsInput.value);
+    var srv = norm(srvInput.value, DEFAULT_SRV);
+    ls(LS_TS, tsInput.value.replace(/^\s+|\s+$/g, ''));
+    ls(LS_SRV, srvInput.value.replace(/^\s+|\s+$/g, ''));
+    out.innerHTML = '';
+    video.removeAttribute('src'); try { video.load(); } catch (e) { }
+
+    var steps = [];
+    // --- Окружение ---
+    steps.push(check('Адрес страницы', function () { return { state: 'info', text: location.href }; }));
+    steps.push(check('origin / secure context', function () {
+      return { state: 'info', text: String(location.origin) + ' · isSecureContext=' + window.isSecureContext };
+    }));
+    steps.push(check('Device API (tizen, webapis)', function () {
+      var v = '';
+      try { v = tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version'); } catch (e) { }
+      return { state: window.tizen ? 'ok' : 'bad', text: 'tizen=' + (typeof window.tizen) + (v ? ' · Tizen ' + v : '') + ' · webapis=' + (typeof window.webapis) };
+    }));
+    steps.push(check('User-Agent', function () { return { state: 'info', text: navigator.userAgent }; }));
+
+    // --- TorrServer в домашней сети ---
+    if (ts) {
+      steps.push(check('fetch ' + ts + '/echo', function () {
+        return get(ts + '/echo?_=' + Date.now()).then(function (r) { return { state: r.status === 200 ? 'ok' : 'bad', text: r.status + ' · ' + short(r.text) + ' · ' + r.ms + ' мс' }; });
+      }));
+      steps.push(check('XHR ' + ts + '/echo', function () {
+        return xhr(ts + '/echo?_=' + Date.now()).then(function (r) { return { state: r.status === 200 ? 'ok' : 'bad', text: r.status + ' · ' + short(r.text) }; });
+      }));
+      steps.push(check('POST /torrents (JSON, preflight)', function () {
+        return get(ts + '/torrents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list' }) })
+          .then(function (r) {
+            var n = '?';
+            try { n = JSON.parse(r.text).length; } catch (e) { }
+            return { state: r.status === 200 ? 'ok' : 'bad', text: r.status + ' · торрентов: ' + n };
+          });
+      }));
+      steps.push(check('<video> с TorrServer', function () { return videoTest(ts); }));
+    } else {
+      steps.push(check('TorrServer в домашней сети', function () { return { state: 'info', text: 'адрес не задан — пропущено' }; }));
+    }
+
+    // --- TorrServer на самом телевизоре ---
+    steps.push(check('fetch 127.0.0.1:8090/echo', function () {
+      return get('http://127.0.0.1:8090/echo?_=' + Date.now(), null, 3000).then(function (r) { return { state: r.status === 200 ? 'ok' : 'bad', text: r.status + ' · ' + short(r.text) }; });
+    }));
+
+    // --- Сервер TorrStream ---
+    steps.push(check('fetch ' + srv + '/api/version', function () {
+      return get(srv + '/api/version?_=' + Date.now()).then(function (r) { return { state: r.status === 200 ? 'ok' : 'bad', text: r.status + ' · ' + short(r.text) }; });
+    }));
+    steps.push(check('… с Authorization: Bearer', function () {
+      // Токен-заглушка: /api/version открыт и так, проверяем сам CORS с заголовком
+      var fake = new Array(65).join('0');
+      return get(srv + '/api/version?_=' + Date.now(), { headers: { Authorization: 'Bearer ' + fake } })
+        .then(function (r) { return { state: r.status === 200 ? 'ok' : 'bad', text: r.status + ' · ' + short(r.text) }; });
+    }));
+    steps.push(check('… с credentials: include', function () {
+      return get(srv + '/api/version?_=' + Date.now(), { credentials: 'include' })
+        .then(function (r) { return { state: r.status === 200 ? 'ok' : 'bad', text: r.status + ' · ' + short(r.text) }; });
+    }));
+    steps.push(check('HTML страницы ' + srv + '/', function () {
+      return get(srv + '/?_=' + Date.now(), null, 10000).then(function (r) {
+        var ok = r.status === 200 && /<html/i.test(r.text);
+        var what = /login/i.test(r.text.slice(0, 3000)) && !/msx\/js\/config\.js/.test(r.text) ? 'страница входа' : 'приложение';
+        return { state: ok ? 'ok' : 'bad', text: r.status + ' · ' + Math.round(r.text.length / 1024) + ' КБ · ' + what };
+      });
+    }));
+
+    // --- Воркеры ---
+    steps.push(check('Worker с адреса сервера', function () {
+      return new Promise(function (resolve, reject) {
+        try {
+          var w = new Worker(srv + '/torrents-worker.js');
+          var t = setTimeout(function () { w.terminate(); resolve({ state: 'info', text: 'создан, ответа нет (ожидаемо)' }); }, 2000);
+          w.onerror = function (e) { clearTimeout(t); w.terminate(); reject(new Error('onerror: ' + (e.message || 'нет'))); };
+        } catch (e) { reject(e); }
+      });
+    }));
+    steps.push(check('Worker из Blob → fetch', function () { return blobWorkerTest(ts, srv); }));
+
+    // --- Хранилище ---
+    steps.push(check('localStorage / IndexedDB', function () {
+      var l = false;
+      try { localStorage.setItem('probeX', '1'); l = localStorage.getItem('probeX') === '1'; } catch (e) { }
+      return { state: l && window.indexedDB ? 'ok' : 'bad', text: 'localStorage=' + l + ' · indexedDB=' + (typeof window.indexedDB) };
+    }));
+
+    var p = Promise.resolve();
+    steps.forEach(function (s) { p = p.then(s); });
+  }
+
+  // Первый торрент TorrServer → самый большой видеофайл → <video>
+  function videoTest(ts) {
+    var post = function (body) {
+      return get(ts + '/torrents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 8000)
+        .then(function (r) { return JSON.parse(r.text); });
+    };
+    var hash;
+    return post({ action: 'list' }).then(function (list) {
+      if (!list || !list.length) throw new Error('в TorrServer нет торрентов');
+      hash = list[0].hash;
+      return get(ts + '/stream?link=' + hash + '&stat', null, 20000).then(function (r) { return JSON.parse(r.text); });
+    }).then(function (st) {
+      var files = (st && st.file_stats) || [];
+      var best = null;
+      files.forEach(function (f) {
+        if (/\.(mkv|mp4|avi|ts|m2ts|mov|webm)$/i.test(f.path) && (!best || f.length > best.length)) best = f;
+      });
+      if (!best) throw new Error('видеофайл не найден (файлов: ' + files.length + ')');
+      var src = ts + '/stream?link=' + hash + '&index=' + best.id + '&play';
+      return new Promise(function (resolve, reject) {
+        var t = setTimeout(function () { reject(new Error('нет loadedmetadata за 30 с · ' + best.path)); }, 30000);
+        video.onloadedmetadata = function () {
+          clearTimeout(t);
+          var a = video.audioTracks ? video.audioTracks.length : 'нет API';
+          var tt = video.textTracks ? video.textTracks.length : 'нет API';
+          try { video.play(); } catch (e) { }
+          resolve({ state: 'ok', text: best.path.split('/').pop() + ' · ' + video.videoWidth + '×' + video.videoHeight +
+            ' · ' + Math.round(video.duration / 60) + ' мин · audioTracks=' + a + ' · textTracks=' + tt });
+        };
+        video.onerror = function () {
+          clearTimeout(t);
+          var e = video.error;
+          reject(new Error('MediaError ' + (e ? e.code + ' ' + (e.message || '') : '?') + ' · ' + best.path.split('/').pop()));
+        };
+        video.src = src;
+      });
+    });
+  }
+
+  // Так в плане будут запускаться воркеры каталога и торрентов: текст с
+  // адресом сервера в начале, из Blob. Внутри — fetch к серверу и TorrServer
+  function blobWorkerTest(ts, srv) {
+    var code =
+      'self.onmessage = function (e) {' +
+      '  var d = e.data, res = {};' +
+      '  var one = function (k, url) { return fetch(url).then(function (r) { res[k] = r.status; }, function (er) { res[k] = String(er && er.message || er); }); };' +
+      '  Promise.all([one("server", d.srv + "/api/version"), d.ts ? one("ts", d.ts + "/echo") : null])' +
+      '    .then(function () { self.postMessage(res); });' +
+      '};';
+    return new Promise(function (resolve, reject) {
+      var w, url;
+      try {
+        url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+        w = new Worker(url);
+      } catch (e) { reject(e); return; }
+      var t = setTimeout(function () { w.terminate(); reject(new Error('нет ответа за 10 с')); }, 10000);
+      w.onmessage = function (e) {
+        clearTimeout(t); w.terminate();
+        var r = e.data;
+        var ok = r.server === 200 && (!ts || r.ts === 200);
+        resolve({ state: ok ? 'ok' : 'bad', text: 'сервер: ' + r.server + (ts ? ' · TorrServer: ' + r.ts : '') });
+      };
+      w.onerror = function (e) { clearTimeout(t); reject(new Error('onerror: ' + (e.message || '?'))); };
+      w.postMessage({ srv: srv, ts: ts });
+    });
+  }
+
+  // Набросок шага 1: HTML приложения с сервера пишется в эту страницу, а
+  // <base> отправляет относительные /api, /hls, картинки на сервер. Воркеры,
+  // вход по паролю и адрес сервера в коде ещё не переделаны — проверяем только,
+  // поднимается ли интерфейс и видит ли он TorrServer в домашней сети
+  function openUi() {
+    var srv = norm(srvInput.value, DEFAULT_SRV);
+    out.innerHTML = '';
+    var r = row('Загрузка интерфейса с ' + srv);
+    get(srv + '/?_=' + Date.now(), null, 15000).then(function (res) {
+      if (res.status !== 200) throw new Error('HTTP ' + res.status);
+      // SERVER_URL (config.js) — location.origin, через него идёт почти весь
+      // /api. Во фронтенде его заменит window.TS_SERVER (шаг 2 плана), здесь —
+      // подставляем сразу после загрузки config.js: обёртка document.write
+      // встаёт первой, загрузчик index.html оборачивает уже её
+      var fix = 'window.TS_SERVER=' + JSON.stringify(srv) + ';' +
+        '(function(){var w=document.write;document.write=function(h){var r=w.call(document,h);' +
+        'if(/\\/config\\.js\\?/.test(h))w.call(document,"<script>SERVER_URL=window.TS_SERVER;<\\/script>");return r;};})();';
+      var head = '<base href="' + srv + '/"><script>' + fix + '<\/script>';
+      var html = res.text.replace(/<head[^>]*>/i, function (m) { return m + head; });
+      document.open();
+      document.write(html);
+      document.close();
+    }).catch(function (e) { r.set('bad', errText(e)); });
+  }
+
+  function exitApp() {
+    try { tizen.application.getCurrentApplication().exit(); } catch (e) { try { window.close(); } catch (e2) { } }
+  }
+
+  // ---- Пульт ----
+  function setFocus(i) {
+    focusIdx = (i + focusables.length) % focusables.length;
+    for (var k = 0; k < focusables.length; k++) focusables[k].className = focusables[k].className.replace(/\s*focus\b/g, '');
+    var el = focusables[focusIdx];
+    el.className += ' focus';
+    el.focus();
+  }
+  document.getElementById('run').onclick = run;
+  document.getElementById('ui').onclick = openUi;
+  document.getElementById('quit').onclick = exitApp;
+
+  document.addEventListener('keydown', function (e) {
+    var k = e.keyCode, el = focusables[focusIdx];
+    var inField = el.tagName === 'INPUT';
+    if (k === KEYS.BACK || k === KEYS.ESC || k === KEYS.IME_CANCEL) {
+      e.preventDefault();
+      if (inField) setFocus(2); else exitApp();
+      return;
+    }
+    if (k === KEYS.UP) { e.preventDefault(); setFocus(focusIdx - 1); return; }
+    if (k === KEYS.DOWN) { e.preventDefault(); setFocus(focusIdx + 1); return; }
+    if (k === KEYS.OK || k === KEYS.IME_DONE) {
+      if (inField) { if (k === KEYS.IME_DONE) { e.preventDefault(); setFocus(focusIdx + 1); } return; }
+      e.preventDefault();
+      el.onclick();
+    }
+  });
+  for (var i = 0; i < focusables.length; i++) {
+    (function (idx) { focusables[idx].addEventListener('mouseover', function () { setFocus(idx); }); })(i);
+  }
+
+  setFocus(tsInput.value ? 2 : 0);
+  if (tsInput.value) run();
+})();
+</script>
+</body>
+</html>

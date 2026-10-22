@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Проверка TorrStream для Tizen: страница внутри пакета против Private Network
+  Access. Отдельный id — ставится рядом с TorrStream, не заменяя его.
+  Набор привилегий и access такой же, как у основного пакета (app/config.xml):
+  проверяем ровно те условия, в которых будет работать приложение.
+-->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://torrstream.online/tizen-probe" version="1.0.0" viewmodes="maximized">
+    <tizen:application id="TorrProbe1.Probe" package="TorrProbe1" required_version="2.3"/>
+    <tizen:profile name="tv-samsung"/>
+    <name>TorrStream Проверка</name>
+    <icon src="icon.png"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+
+    <access origin="*" subdomains="true"/>
+    <tizen:allow-navigation>*</tizen:allow-navigation>
+    <tizen:content-security-policy>default-src * 'unsafe-inline' 'unsafe-eval' data: blob:</tizen:content-security-policy>
+
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/hostedapp_deviceapi_allow"/>
+
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable"
+                   encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>
