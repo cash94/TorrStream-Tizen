@@ -1,0 +1,48 @@
+# Сборка wgt для Samsung Tizen по тегу v* (git tag v1.0.0 && git push origin v1.0.0).
+#
+# Версия пакета берётся из тега (tools/build.py --version). Пакет без подписи:
+# сертификат Samsung привязан к телевизору (DUID), поэтому подписывает его тот,
+# кто ставит, — Apps2Samsung или Tizen Studio (см. README). Постоянное имя —
+# TorrStream-Tizen.wgt (releases/latest/download/TorrStream-Tizen.wgt).
+# Запуск вручную (Actions → build → Run workflow) — только сборка, wgt в артефакте.
+name: build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: wgt
+        run: |
+          VER=""
+          case "$GITHUB_REF" in refs/tags/v*) V="${GITHUB_REF_NAME#v}"; VER="--version ${V%%-*}";; esac
+          python3 tools/build.py $VER
+          ls -la dist
+
+      - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRE=""
+          case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" dist/*.wgt $PRE \
+            --title "TorrStream для Samsung Tizen ${GITHUB_REF_NAME#v}" \
+            --notes "Приложение TorrStream для телевизоров Samsung (Tizen). Пакет без подписи: установите его через Apps2Samsung (Custom WGT) или Tizen Studio — они подпишут его вашим сертификатом Samsung. Подробнее — в README."
+
+      - name: Артефакт
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: TorrStream-Tizen
+          path: dist/*.wgt
+          retention-days: 7

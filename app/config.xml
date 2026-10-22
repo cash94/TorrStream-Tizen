@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TorrStream для Samsung Tizen. Пакет — только запускалка (index.html): сам
+  интерфейс открывается с сервера TorrStream, поэтому allow-navigation и access
+  открыты для любого адреса (сервер можно сменить на свой).
+
+  hostedapp_deviceapi_allow — Device API (window.tizen: выход, медиаклавиши,
+  запуск службы TorrServer) и в странице, открытой с сервера. Привилегия уровня
+  partner: сертификат нужен партнёрский (Apps2Samsung выбирает его сам). Без неё
+  приложение тоже работает — фронтенд узнаёт его по метке ?tsapp=tizen.
+-->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://torrstream.online/tizen" version="1.0.0" viewmodes="maximized">
+    <tizen:application id="TorrStrm01.TorrStream" package="TorrStrm01" required_version="2.3"/>
+    <tizen:profile name="tv-samsung"/>
+    <name>TorrStream</name>
+    <description>TorrStream — фильмы и сериалы через TorrServer</description>
+    <author href="https://github.com/cash94">TorrStream</author>
+    <icon src="icon.png"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+
+    <access origin="*" subdomains="true"/>
+    <tizen:allow-navigation>*</tizen:allow-navigation>
+    <tizen:content-security-policy>default-src * 'unsafe-inline' 'unsafe-eval' data: blob:</tizen:content-security-policy>
+
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/hostedapp_deviceapi_allow"/>
+
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable"
+                   encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>

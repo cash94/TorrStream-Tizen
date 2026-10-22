@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>TorrStream</title>
+<!--
+  Запускалка TorrStream для Samsung Tizen — та же, что в TorrStream-webOS.
+  Сам интерфейс в wgt не лежит: он открывается с сервера TorrStream, как на
+  webOS, Vidaa и в Android-приложении, — поэтому обновляется без переустановки.
+
+  При старте открываем сохранённый адрес (по умолчанию общий
+  http://torrstream.online). Пока идёт отсчёт, ОК или любая стрелка
+  показывают форму смены адреса. Сервер не ответил — сразу форма с ошибкой.
+
+  К адресу добавляем ?tsapp=tizen: по ней фронтенд узнаёт приложение
+  (config.js: detectTizenApp), если прошивка не даёт открытой с сервера
+  странице Device API. Медиаклавиши регистрируем здесь же, до перехода.
+
+  ES5 без зависимостей: Tizen 2.4–4 (ТВ 2016–2018) — движок уровня Chrome 47–56.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0b0f; color: #fff; overflow: hidden; }
+  body { font-family: "SamsungOne", "Samsung Sans", Roboto, Arial, sans-serif; }
+  .wrap { position: absolute; top: 50%; left: 50%; width: 900px; margin-left: -450px; -webkit-transform: translateY(-50%); transform: translateY(-50%); text-align: center; }
+  .logo { width: 120px; height: 120px; }
+  h1 { font-size: 56px; margin: 18px 0 8px; }
+  h1 span { color: #ff8c00; }
+  .status { font-size: 28px; color: #9a9aa6; margin: 0 0 10px; min-height: 36px; }
+  .hint { font-size: 22px; color: #6b6b78; }
+  .error { color: #ff6a6a; }
+  .form { display: none; margin-top: 30px; }
+  .form label { display: block; font-size: 24px; color: #9a9aa6; margin-bottom: 12px; }
+  input {
+    width: 100%; box-sizing: border-box; padding: 18px 22px; font-size: 32px;
+    background: #17171d; color: #fff; border: 3px solid #24242c; border-radius: 14px; outline: none;
+  }
+  .row { margin-top: 22px; }
+  button {
+    font-size: 28px; padding: 16px 36px; margin: 0 10px; border-radius: 14px; cursor: pointer;
+    border: 3px solid transparent; background: #26262e; color: #fff; outline: none;
+  }
+  button.primary { background: #ff8c00; color: #000; font-weight: bold; }
+  .focus { border-color: #ff8c00 !important; }
+  button.primary.focus { border-color: #fff !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="logo" src="logo.png" alt="">
+  <h1>Torr<span>Stream</span></h1>
+  <p class="status" id="status"></p>
+  <p class="hint" id="hint"></p>
+  <div class="form" id="form">
+    <label for="url">Адрес сервера TorrStream</label>
+    <input id="url" type="text" autocomplete="off" spellcheck="false">
+    <div class="row">
+      <button class="primary" id="open">Открыть</button>
+      <button id="reset">По умолчанию</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var DEFAULT_URL = 'http://torrstream.online';
+  var KEY = 'torrstreamServerUrl';
+  var COUNTDOWN = 3;
+  // 10009 — «Назад» (Return) пульта Samsung; 65376/65385 — «Готово»/«Отмена»
+  // экранной клавиатуры Tizen
+  var KEYS = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, OK: 13, BACK: 10009, ESC: 27, IME_DONE: 65376, IME_CANCEL: 65385 };
+
+  var statusEl = document.getElementById('status');
+  var hintEl = document.getElementById('hint');
+  var form = document.getElementById('form');
+  var input = document.getElementById('url');
+  var openBtn = document.getElementById('open');
+  var resetBtn = document.getElementById('reset');
+  var timer = null;
+  var focusables = [input, openBtn, resetBtn];
+  var focusIdx = 0;
+
+  // Медиаклавиши Tizen отдаёт приложению, только если их зарегистрировать.
+  // Регистрация — у приложения, а не у страницы, поэтому делаем это здесь:
+  // фронтенду с сервера Device API может и не достаться
+  (function registerKeys() {
+    var input = window.tizen && tizen.tvinputdevice;
+    if (!input) return;
+    var names = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind',
+      'MediaTrackPrevious', 'MediaTrackNext', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue', 'Info',
+      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    for (var i = 0; i < names.length; i++) {
+      try { input.registerKey(names[i]); } catch (e) { }
+    }
+  })();
+
+  function exitApp() {
+    try { tizen.application.getCurrentApplication().exit(); } catch (e) { try { window.close(); } catch (e2) { } }
+  }
+
+  function saved() {
+    try { return localStorage.getItem(KEY) || DEFAULT_URL; } catch (e) { return DEFAULT_URL; }
+  }
+  function save(url) {
+    try { localStorage.setItem(KEY, url); } catch (e) { }
+  }
+  // Как в TorrStream: без протокола — подставляем http://
+  function normalize(url) {
+    url = String(url || '').replace(/^\s+|\s+$/g, '').replace(/\/+$/, '');
+    if (!url) return '';
+    if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+    return url;
+  }
+
+  function setFocus(i) {
+    focusIdx = (i + focusables.length) % focusables.length;
+    for (var k = 0; k < focusables.length; k++) focusables[k].className = focusables[k].className.replace(/\s*focus\b/g, '');
+    var el = focusables[focusIdx];
+    el.className += ' focus';
+    // Поле ввода получает настоящий фокус — Tizen покажет экранную клавиатуру
+    if (el === input) input.focus(); else { input.blur(); el.focus(); }
+  }
+
+  function showForm(message, isError, value) {
+    if (timer) { clearInterval(timer); timer = null; }
+    statusEl.textContent = message || 'Укажите адрес сервера TorrStream';
+    statusEl.className = 'status' + (isError ? ' error' : '');
+    hintEl.textContent = 'Например: torrstream.online или 192.168.1.30:3000';
+    form.style.display = 'block';
+    // После ошибки — тот адрес, что пытались открыть: его и надо поправить
+    input.value = value || saved();
+    setFocus(1);
+  }
+
+  // Сервер проверяем до перехода: иначе при недоступном адресе Tizen покажет
+  // свою страницу ошибки, и сменить адрес будет уже неоткуда. Ждём именно
+  // версию TorrStream: страницу ошибки отдают и прокси, и роутеры. CORS сервер
+  // TorrStream отдаёт любому источнику (server.js: cors origin: true)
+  function probe(url, done) {
+    var finished = false;
+    var finish = function (ok) { if (!finished) { finished = true; done(ok); } };
+    var x = new XMLHttpRequest();
+    try {
+      x.open('GET', url + '/api/version?_=' + new Date().getTime(), true);
+      x.timeout = 8000;
+      x.onload = function () {
+        var v = '';
+        try { v = JSON.parse(x.responseText).version || ''; } catch (e) { }
+        finish(x.status === 200 && /^TorrStream/.test(v));
+      };
+      x.onerror = x.ontimeout = function () { finish(false); };
+      x.send();
+    } catch (e) { finish(false); }
+  }
+
+  function go(url) {
+    url = normalize(url);
+    if (!url) { showForm('Введите адрес сервера', true); return; }
+    if (timer) { clearInterval(timer); timer = null; }
+    input.blur();
+    form.style.display = 'none';
+    statusEl.className = 'status';
+    statusEl.textContent = 'Подключение к ' + url.replace(/^https?:\/\//, '') + '…';
+    hintEl.textContent = '';
+    probe(url, function (ok) {
+      if (!ok) { showForm(url.replace(/^https?:\/\//, '') + ' — не отвечает или это не сервер TorrStream', true, url); return; }
+      save(url);
+      location.replace(url + '/?tsapp=tizen');
+    });
+  }
+
+  function start() {
+    var url = saved();
+    var left = COUNTDOWN;
+    statusEl.textContent = 'Открываю ' + url.replace(/^https?:\/\//, '') + '…';
+    hintEl.textContent = 'ОК — изменить адрес сервера';
+    timer = setInterval(function () {
+      left--;
+      if (left <= 0) go(url);
+    }, 1000);
+  }
+
+  openBtn.onclick = function () { go(input.value); };
+  resetBtn.onclick = function () { input.value = DEFAULT_URL; setFocus(1); };
+
+  document.addEventListener('keydown', function (e) {
+    var k = e.keyCode;
+    if (form.style.display !== 'block') {
+      // Отсчёт: ОК или стрелка — сменить адрес; «Назад» — выход
+      if (k === KEYS.BACK || k === KEYS.ESC) { e.preventDefault(); exitApp(); return; }
+      if (timer && (k === KEYS.OK || (k >= 37 && k <= 40))) { e.preventDefault(); showForm(); }
+      return;
+    }
+    if (k === KEYS.BACK || k === KEYS.ESC || k === KEYS.IME_CANCEL) {
+      e.preventDefault();
+      // Из поля — к кнопкам, с кнопок — выход из приложения
+      if (focusables[focusIdx] === input) setFocus(1); else exitApp();
+      return;
+    }
+    if (k === KEYS.DOWN) { e.preventDefault(); if (focusIdx === 0) setFocus(1); return; }
+    if (k === KEYS.UP) { e.preventDefault(); setFocus(0); return; }
+    if (focusables[focusIdx] !== input) {
+      if (k === KEYS.LEFT) { e.preventDefault(); setFocus(1); return; }
+      if (k === KEYS.RIGHT) { e.preventDefault(); setFocus(2); return; }
+      if (k === KEYS.OK) { e.preventDefault(); focusables[focusIdx].onclick(); return; }
+    } else if (k === KEYS.OK || k === KEYS.IME_DONE) {
+      e.preventDefault(); go(input.value);
+    }
+  });
+
+  // Указатель Smart Remote: наведение — тот же фокус
+  for (var i = 0; i < focusables.length; i++) {
+    (function (idx) {
+      focusables[idx].addEventListener('mouseover', function () { setFocus(idx); });
+    })(i);
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
