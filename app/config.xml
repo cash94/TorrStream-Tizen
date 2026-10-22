@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  TorrStream для Samsung Tizen. Пакет — только запускалка (index.html): сам
-  интерфейс открывается с сервера TorrStream, поэтому allow-navigation и access
-  открыты для любого адреса (сервер можно сменить на свой).
+  TorrStream для Samsung Tizen. Пакет — только запускалка (index.html): разметку
+  интерфейса она берёт с сервера TorrStream и пишет в свою страницу, поэтому
+  access открыт для любого адреса (сервер можно сменить на свой).
 
-  hostedapp_deviceapi_allow — Device API (window.tizen: выход, медиаклавиши,
-  запуск службы TorrServer) и в странице, открытой с сервера. Привилегия уровня
-  partner: сертификат нужен партнёрский (Apps2Samsung выбирает его сам). Без неё
-  приложение тоже работает — фронтенд узнаёт его по метке ?tsapp=tizen.
+  Все привилегии — уровня public: пакет ставят с сертификатом public (установщик
+  с телефона, Tizen Studio без партнёрского). hostedapp_deviceapi_allow (Device
+  API для страницы, открытой с сервера) была в 1.0.0 и 1.1.0 — уровня partner,
+  с public-сертификатом установка падала (MISMATCHED_PRIVILEGE_LEVEL). С 1.1.0
+  страница лежит в пакете, и Device API у неё есть без этой привилегии.
 -->
 <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
         id="http://torrstream.online/tizen" version="1.0.0" viewmodes="maximized">
@@ -28,7 +29,6 @@
     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
     <tizen:privilege name="http://tizen.org/privilege/application.info"/>
-    <tizen:privilege name="http://developer.samsung.com/privilege/hostedapp_deviceapi_allow"/>
 
     <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable"
                    encryption="disable" install-location="auto" hwkey-event="enable"/>
