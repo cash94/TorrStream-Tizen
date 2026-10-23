@@ -4,6 +4,8 @@
 # сертификат Samsung привязан к телевизору (DUID), поэтому подписывает его тот,
 # кто ставит, — Apps2Samsung или Tizen Studio (см. README). Постоянное имя —
 # TorrStream-Tizen.wgt (releases/latest/download/TorrStream-Tizen.wgt).
+# С 1.1.3 wgt гибридный: внутри .NET-служба ffprobe (названия дорожек прямо с
+# телевизора), как TorrServer у no-cover/torr-streaming, — поэтому нужен .NET.
 # Запуск вручную (Actions → build → Run workflow) — только сборка, wgt в артефакте.
 name: build
 
@@ -21,11 +23,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: wgt
         run: |
           VER=""
           case "$GITHUB_REF" in refs/tags/v*) V="${GITHUB_REF_NAME#v}"; VER="--version ${V%%-*}";; esac
           python3 tools/build.py $VER
+          ls -la dist
+
+      # Tizen 5.5: службе там нельзя запускать программы — отдельный
+      # TorrStream-Tizen-5.5.wgt с FFmpeg библиотекой (libtsprobe.so, zig cc под
+      # armhf/glibc 2.17). Не собралась — основной wgt всё равно выходит
+      - name: wgt для Tizen 5.5
+        continue-on-error: true
+        run: |
+          VER=""
+          case "$GITHUB_REF" in refs/tags/v*) V="${GITHUB_REF_NAME#v}"; VER="--version ${V%%-*}";; esac
+          bash tools/build_tsprobe.sh tools/.cache
+          python3 tools/build.py $VER --lib tools/.cache/libtsprobe.so
           ls -la dist
 
       - name: Релиз
@@ -37,7 +55,7 @@ jobs:
           case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
           gh release create "$GITHUB_REF_NAME" dist/*.wgt $PRE \
             --title "TorrStream для Samsung Tizen ${GITHUB_REF_NAME#v}" \
-            --notes "Приложение TorrStream для телевизоров Samsung (Tizen). Пакет без подписи: установите его через Apps2Samsung (Custom WGT) или Tizen Studio — они подпишут его вашим сертификатом Samsung. Подробнее — в README."
+            --notes "Приложение TorrStream для телевизоров Samsung (Tizen). Внутри — служба ffprobe: названия аудиодорожек и субтитров (Full, Forced, SDH) читаются прямо на телевизоре. Пакет без подписи: установите его через Apps2Samsung (Custom WGT) или Tizen Studio — они подпишут его вашим сертификатом Samsung. Подробнее — в README."
 
       - name: Артефакт
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}

@@ -1,0 +1,29 @@
+<!--
+  Служба ffprobe для TorrStream на Samsung Tizen — отдельный пакет .tpk.
+  Сборка: python tools/build.py (кладёт res/ffprobe и зовёт dotnet build).
+  Гибридный пакет (wgt + tpk) на профиле TV официально не поддерживается,
+  поэтому служба — свой пакет, как TorrServer от no-cover/torr-streaming.
+-->
+<Project Sdk="Tizen.NET.Sdk/1.1.6">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>tizen40</TargetFramework>
+    <AssemblyName>TorrStreamFfprobe</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>None</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- res/ffprobe — статический armhf (johnvansickle.com), кладёт tools/build.py -->
+    <TizenTpkUserIncludeFiles Include="res\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <TizenTpkUserExcludeFiles Include="TorrStreamFfprobe.deps.json" />
+    <TizenTpkUserExcludeFiles Include="bin/TorrStreamFfprobe.pdb" />
+  </ItemGroup>
+
+</Project>

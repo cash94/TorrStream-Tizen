@@ -102,6 +102,19 @@
     }
   })();
 
+  // Служба ffprobe — .NET-часть этого же пакета (ffprobe-service/, собирается
+  // гибридом, как TorrServer у no-cover/torr-streaming). Она стартует вместе с
+  // телевизором, но после установки или если система её выгрузила — будим
+  // сами. Уже работает — запрос просто ничего не меняет. Нет службы (wgt без
+  // неё, --plain) — ошибка, на запуск приложения не влияет
+  (function startFfprobeService() {
+    try {
+      if (window.tizen && tizen.application) {
+        tizen.application.launch('online.torrstream.ffprobe', function () { }, function () { });
+      }
+    } catch (e) { }
+  })();
+
   function exitApp() {
     try { tizen.application.getCurrentApplication().exit(); } catch (e) { try { window.close(); } catch (e2) { } }
   }

@@ -29,6 +29,9 @@
     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
     <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+    <!-- webapis.network.getIp(): страница ходит к службе ffprobe по IP
+         телевизора — до localhost она на ТВ не достаёт -->
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
 
     <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable"
                    encryption="disable" install-location="auto" hwkey-event="enable"/>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Служба ffprobe для TorrStream (Tizen TV). Запускается вместе с телевизором
+  (on-boot, launch_on_event), а ещё её будит запускалка TorrStream
+  (tizen.application.launch), и живёт в фоне: HTTP на 127.0.0.1:8095, ответ —
+  JSON ffprobe файла с TorrServer.
+  Собирается внутрь TorrStream-Tizen.wgt гибридом, как no-cover/torr-streaming
+  (tools/build.py): package при сборке заменяется на package веб-приложения.
+
+  Сделано по их манифесту, проверенному на телевизорах:
+  - exec.bin, fork, process.start, process.info — без них запуск ffprobe из
+    службы на Tizen 5.5 падал с «Operation not permitted» (EPERM);
+  - nodisplay="false" и display.hidden=false: со скрытой службой Tizen 9
+    ставил пакет, но не показывал ярлык приложения.
+-->
+<manifest xmlns="http://tizen.org/ns/packages" api-version="4.0" package="online.torrstream.ffprobe" version="1.0.0">
+    <profile name="tv" />
+    <service-application appid="online.torrstream.ffprobe" exec="TorrStreamFfprobe.dll" multiple="false" nodisplay="false" taskmanage="false" on-boot="true" type="dotnet" launch_mode="caller">
+        <label>TorrStream ffprobe</label>
+        <icon>icon.png</icon>
+        <metadata key="http://samsung.com/tv/metadata/background.execution.support" value="true"/>
+        <metadata key="http://developer.samsung.com/tizen/metadata/allow-on-boot"/>
+        <metadata key="http://samsung.com/tv/metadata/display.hidden" value="false"/>
+        <metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="NotSupportSuspendDelay"/>
+        <metadata key="http://samsung.com/tv/metadata/application/watchdog.set" value="16,240"/>
+        <metadata key="http://tizen.org/metadata/prefer_dotnet_aot" value="true"/>
+        <metadata key="http://samsung.com/tv/metadata/application/read.metadata.from.hybrid.webapp"/>
+        <background-category value="background-network"/>
+        <app-control>
+            <operation name="http://tizen.org/appcontrol/operation/launch_on_event"/>
+            <uri name="file:///tmp/firstscreen_done"/>
+        </app-control>
+    </service-application>
+    <privileges>
+        <privilege>http://tizen.org/privilege/internet</privilege>
+        <privilege>http://tizen.org/privilege/network.get</privilege>
+        <privilege>http://tizen.org/privilege/exec.bin</privilege>
+        <privilege>http://tizen.org/privilege/fork</privilege>
+        <privilege>http://tizen.org/privilege/process.info</privilege>
+        <privilege>http://tizen.org/privilege/process.start</privilege>
+        <!-- уведомление на экране (org.tizen.alert-syspopup), как у no-cover -->
+        <privilege>http://tizen.org/privilege/appmanager.launch</privilege>
+    </privileges>
+</manifest>

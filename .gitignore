@@ -1,1 +1,5 @@
 dist/
+tools/.cache/
+ffprobe-service/bin/
+ffprobe-service/obj/
+ffprobe-service/res/ffprobe
