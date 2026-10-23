@@ -102,17 +102,19 @@
     }
   })();
 
-  // Служба ffprobe — отдельный пакет TorrStream-ffprobe.wgt (ffprobe-service/,
-  // гибрид, как TorrServer у no-cover/torr-streaming). Она стартует вместе с
-  // телевизором, но если система её выгрузила — пробуем разбудить. Уже
-  // работает — запрос ничего не меняет. Пакет не стоит (или система не даёт
-  // запускать службу чужого пакета) — ошибка, на запуск приложения не влияет
-  (function startFfprobeService() {
-    try {
-      if (window.tizen && tizen.application) {
-        tizen.application.launch('online.torrstream.ffprobe', function () { }, function () { });
-      }
-    } catch (e) { }
+  // Службы названий дорожек (ffprobe-service/, гибриды, как TorrServer у
+  // no-cover/torr-streaming): online.torrstream.tracks — в этом же пакете
+  // (разбор MKV/MP4, порт 8096), online.torrstream.ffprobe — отдельный
+  // TorrStream-ffprobe.wgt (Tizen 6+, порт 8095). Стартуют вместе с
+  // телевизором, но если система их выгрузила — будим. Уже работает — запрос
+  // ничего не меняет. Нет пакета — ошибка, на запуск приложения не влияет
+  (function startTrackServices() {
+    var ids = ['online.torrstream.tracks', 'online.torrstream.ffprobe'];
+    for (var i = 0; i < ids.length; i++) {
+      try {
+        if (window.tizen && tizen.application) tizen.application.launch(ids[i], function () { }, function () { });
+      } catch (e) { }
+    }
   })();
 
   function exitApp() {

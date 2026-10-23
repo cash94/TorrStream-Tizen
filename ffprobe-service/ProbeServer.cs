@@ -4,6 +4,8 @@
 //   GET /version             — {"name":"TorrStream ffprobe","service":"1.0.0","ffprobe":"<строка версии>"}
 //   GET /ffprobe?url=<адрес> — JSON ffprobe (-show_format -show_streams) файла
 //                              по этому адресу (TorrServer /stream…)
+// Нет ffprobe или система не даёт его запустить (Tizen 5.5) — тот же JSON из
+// разбора заголовка MKV/MP4 на C# (HeaderProbe.cs), в /version exec «разбор».
 // Ответы с Access-Control-Allow-Origin: * — страница TorrStream лежит в
 // пакете приложения (file://).
 //
@@ -23,7 +25,9 @@ namespace TorrStreamFfprobe
 {
     public class ProbeServer
     {
-        public const string ServiceVersion = "1.0.0";
+        public const string ServiceVersion = "1.1.0";
+        // «TorrStream ffprobe» (8095) или «TorrStream tracks» (8096, только разбор)
+        public string Name = "TorrStream ffprobe";
         const int ProbeTimeoutMs = 60000;
 
         readonly int port;
@@ -47,6 +51,11 @@ namespace TorrStreamFfprobe
         // его, не успевал ответить странице («ffprobe на ТВ: не отвечает»)
         volatile string ffprobeVersion;
         volatile string ffprobeVersionError;
+        // Разбор заголовка на C# (HeaderProbe.cs) вместо ffprobe: в пакете его нет
+        // (сборка для Tizen 5.5) или система не даёт его запустить ни файлом, ни
+        // из памяти — как на Tizen 5.5. Причина — в /version как «note»
+        volatile bool headerMode;
+        volatile string headerNote;
 
         public ProbeServer(int port, string ffprobePath, string stageError, Action<string> log)
             : this(port, ffprobePath, stageError, log, null) { }
@@ -86,6 +95,7 @@ namespace TorrStreamFfprobe
                 var check = new Thread(CheckVersion) { IsBackground = true };
                 check.Start();
             }
+            else SwitchToHeader(stageError);
         }
 
         public void Stop()
@@ -159,6 +169,23 @@ namespace TorrStreamFfprobe
         /// </summary>
         public Action<string> VersionChecked;
 
+        void SwitchToHeader(string why)
+        {
+            headerNote = why;
+            ffprobeVersion = HeaderProbe.Version;
+            execMethod = "разбор";
+            headerMode = true;
+            log("ffprobe нет (" + (why ?? "?") + ") — разбор заголовка MKV/MP4");
+            var n = VersionChecked;
+            if (n != null) { try { n("TorrStream: служба дорожек работает — разбор MKV/MP4"); } catch { } }
+        }
+
+        // ffprobe не запустился ни файлом, ни из памяти — запрет системы, а не сбой
+        bool ExecBlocked()
+        {
+            lock (execLock) return fileExecError != null && (memoryPathFactory == null || memoryError != null);
+        }
+
         void CheckVersion()
         {
             if (libProbe != null)
@@ -173,6 +200,7 @@ namespace TorrStreamFfprobe
             string err;
             string output = RunFfprobe("-version", 120000, out err);
             int ms = (int)(DateTime.UtcNow - started).TotalMilliseconds;
+            if (output == null && ExecBlocked()) { SwitchToHeader(err); return; }
             if (output != null) ffprobeVersion = output.Split('\n')[0].Trim() + " (" + ms + " мс)";
             else ffprobeVersionError = (err ?? "ошибка") + " (" + ms + " мс)";
             log("ffprobe -version: " + (ffprobeVersion ?? ffprobeVersionError));
@@ -196,7 +224,7 @@ namespace TorrStreamFfprobe
         string VersionJson()
         {
             var sb = new StringBuilder();
-            sb.Append("{\"name\":\"TorrStream ffprobe\",\"service\":\"").Append(ServiceVersion).Append("\",\"ffprobe\":");
+            sb.Append("{\"name\":").Append(Quote(Name)).Append(",\"service\":\"").Append(ServiceVersion).Append("\",\"ffprobe\":");
             sb.Append(ffprobeVersion == null ? "null" : Quote(ffprobeVersion));
             sb.Append(",\"exec\":").Append(Quote(execMethod));
             // Разрядность процесса службы: 32-битная libtsprobe.so (сборка для
@@ -207,8 +235,16 @@ namespace TorrStreamFfprobe
             if (fileExecError != null) sb.Append(",\"fileError\":").Append(Quote(fileExecError));
             if (memoryError != null) sb.Append(",\"memoryError\":").Append(Quote(memoryError));
             if ((ffprobePath != null || libProbe != null) && ffprobeVersion == null && ffprobeVersionError == null) sb.Append(",\"checking\":true");
-            string error = stageError ?? ffprobeVersionError;
-            if (error != null) sb.Append(",\"error\":").Append(Quote(error));
+            if (headerMode)
+            {
+                // Работает разбор заголовка: почему не ffprobe — справкой, не ошибкой
+                if (headerNote != null) sb.Append(",\"note\":").Append(Quote(headerNote));
+            }
+            else
+            {
+                string error = stageError ?? ffprobeVersionError;
+                if (error != null) sb.Append(",\"error\":").Append(Quote(error));
+            }
             sb.Append("}");
             return sb.ToString();
         }
@@ -218,7 +254,6 @@ namespace TorrStreamFfprobe
         string Probe(string url, out string error)
         {
             error = null;
-            if (ffprobePath == null && libProbe == null) { error = stageError ?? "ffprobe не готов"; return null; }
             if (string.IsNullOrEmpty(url) || !(url.StartsWith("http://") || url.StartsWith("https://")) ||
                 url.IndexOf('"') >= 0 || url.IndexOf(' ') >= 0 || url.IndexOf('\\') >= 0)
             {
@@ -298,6 +333,7 @@ namespace TorrStreamFfprobe
         {
             string output;
             error = null;
+            if (ffprobePath == null && libProbe == null || headerMode) return HeaderOnce(url, out error);
             if (libProbe != null)
             {
                 try { output = libProbe(url); }
@@ -308,10 +344,19 @@ namespace TorrStreamFfprobe
             // потоков, это мегабайты из раздачи: на Tizen 9 ответ шёл 35 с, и
             // CUB успевал раньше
             else output = RunFfprobe("-v quiet -print_format json -show_format -show_streams -nofind_stream_info \"" + url + "\"", ProbeTimeoutMs, out error);
+            // Запуск запрещён (а проверка версии ещё не дошла) — разбор заголовка
+            if (output == null && libProbe == null && ExecBlocked()) return HeaderOnce(url, out error);
             if (output == null) return null;
             if (output.TrimStart().StartsWith("{") && output.IndexOf("\"streams\"", StringComparison.Ordinal) >= 0) return output;
             if (error == null) error = "ffprobe не разобрал файл (TorrServer не отдал его?)";
             return null;
+        }
+
+        static string HeaderOnce(string url, out string error)
+        {
+            error = null;
+            try { return HeaderProbe.Probe(url, ProbeTimeoutMs); }
+            catch (Exception e) { error = e.Message; return null; }
         }
 
         // Файл не запустился (исключение Process.Start, а не код выхода ffprobe) —
@@ -447,7 +492,7 @@ namespace TorrStreamFfprobe
             return "{" + Quote(key) + ":" + Quote(value ?? "") + "}";
         }
 
-        static string Quote(string s)
+        internal static string Quote(string s)
         {
             var sb = new StringBuilder("\"");
             foreach (char c in s)

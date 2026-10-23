@@ -42,60 +42,73 @@ Android-приложении, на Tizen нельзя: веб-приложени
 на этом устройстве». Приложение проверяет `127.0.0.1:8090/echo`; если служба
 стоит, но не отвечает — просит систему её запустить.
 
-## Служба ffprobe (отдельный пакет TorrStream-ffprobe.wgt)
+## Названия дорожек: службы на телевизоре
 
 Названия аудиодорожек и субтитров (Full, Forced, SDH, «по умолчанию»,
 «принудительные») хранятся в самом файле. AVPlay их не отдаёт, только язык и
-кодек. Их читает ffprobe — а веб-приложению Tizen запускать программы нельзя.
-Поэтому ffprobe живёт в .NET-службе `ffprobe-service/` (appid
-`online.torrstream.ffprobe`). Она ставится отдельным пакетом
-`TorrStream-ffprobe.wgt` (id `TorrFfprb1.Ffprobe`), чтобы сам TorrStream-Tizen.wgt
-оставался лёгкой запускалкой без .NET. Пакет гибридный, ровно как TorrServer от
-no-cover/torr-streaming (их `tv.torr.streaming.tizen.wgt`):
+кодек, а веб-приложению Tizen запускать программы нельзя. Поэтому их читает
+.NET-служба `ffprobe-service/` — одна программа в двух пакетах (режим — по appid):
+
+| Пакет | Служба, порт | Чем читает | Tizen |
+|---|---|---|---|
+| `TorrStream-Tizen.wgt` (сам TorrStream) | `online.torrstream.tracks`, 8096 | разбор заголовка MKV/MP4 на C# | все, и 5.5 |
+| `TorrStream-ffprobe.wgt` (по желанию, id `TorrFfprb1.Ffprobe`) | `online.torrstream.ffprobe`, 8095 | ffprobe | 6+ |
+
+Фронтенд (`player.js: directProbeStart`) спрашивает по очереди: разбор (8096) →
+ffprobe (8095, для прочих контейнеров) → сервис CUB. «Об устройстве» → «Дорожки
+на ТВ» и «ffprobe на ТВ» — работают ли службы и что ответили по последнему файлу.
+
+Оба пакета — гибриды, ровно как TorrServer от no-cover/torr-streaming (их
+`tv.torr.streaming.tizen.wgt`):
 
     config.xml, tizen-manifest.xml   — в корне; package службы = package веб-приложения
-    bin/  shared/res/  res/ffprobe   — .NET-служба
-    res/wgt/                         — веб-часть (ffprobe-app/): запуск службы и её состояние
-
-Значок «TorrStream ffprobe» в списке приложений открывает страницу, которая
-будит службу и показывает, работает ли ffprobe. TorrStream и служба связаны
-только по HTTP (IP телевизора:8095), ставить их можно в любом порядке.
+    bin/  shared/res/  res/ffprobe   — .NET-служба (ffprobe — только в TorrStream-ffprobe.wgt)
+    res/wgt/                         — веб-часть (app/ или ffprobe-app/)
 
 Подписей внутри нет — подписывает установщик. Привилегии только уровня public
 (у no-cover их много уровня partner/platform — с установщиком на телефоне
 такие не ставятся).
 
-- стартует вместе с телевизором и висит в фоне, окна у неё нет; запускалка
-  TorrStream ещё и пробует будить её при каждом старте (`tizen.application.launch`);
-- статический `ffprobe` armhf (johnvansickle.com, тот же, что в TorrStream-webOS)
-  при запуске копируется в каталог данных и получает права на запуск;
-- HTTP на порту 8095 (`ProbeServer.cs`): `GET /ffprobe?url=<адрес>` — JSON
-  ffprobe файла прямо с TorrServer, только с самого телевизора; `GET /version` —
-  с любого устройства сети: `http://<IP телевизора>:8095/version` в браузере
-  телефона покажет, жива ли служба и запускается ли ffprobe (версия и время
-  запуска или ошибка; `"checking": true` — проверка ещё идёт).
+- службы стартуют вместе с телевизором и висят в фоне, окна у них нет;
+  запускалка TorrStream ещё и будит обе при каждом старте (`tizen.application.launch`);
+- HTTP (`ProbeServer.cs`): `GET /ffprobe?url=<адрес>` — JSON как у ffprobe файла
+  прямо с TorrServer, только с самого телевизора; `GET /version` — с любого
+  устройства сети: `http://<IP телевизора>:8096/version` (или `:8095`) в
+  браузере телефона покажет, жива ли служба и чем читает (`exec`: «разбор»,
+  «файл», «память»; `"checking": true` — проверка ffprobe ещё идёт).
 
-Фронтенд (`player.js: directProbeStart`) на Tizen спрашивает её первой, потом
-сервис CUB, потом сведения сервера TorrStream. «Об устройстве» → «ffprobe на ТВ» —
-установлена ли служба и её версия ffprobe. Не запустилась служба — всё
-работает, как раньше (CUB).
+**Разбор заголовка** (`HeaderProbe.cs`): читает MKV (Tracks) и MP4 (moov)
+запросами Range к TorrServer, кусками по 256 КБ, и отдаёт тот же JSON, что
+ffprobe: названия, язык, кодек (имена — как у ffprobe), default/forced/SDH/
+комментарий, каналы, частоту, размер кадра, длительность. MP4 с заголовком в
+конце файла — тоже (читается хвост). Пароль TorrServer — из адреса (Basic). AVI,
+TS и прочее — ошибка, тогда ffprobe или CUB.
+
+**ffprobe** (TorrStream-ffprobe.wgt): статический `ffprobe` armhf (johnvansickle.com,
+тот же, что в TorrStream-webOS) копируется в каталог данных и получает права на
+запуск; не запустился файлом — пробует копию в памяти (memfd), не вышло и так —
+служба сама переходит на разбор заголовка. Значок «TorrStream ffprobe» открывает
+страницу, которая будит службу и показывает её состояние.
+
+**Tizen 5.5** исполняет только подписанный код: ffprobe файлом и из памяти —
+«Operation not permitted», своя `.so` — «failed to map segment from shared object».
+Управляемый код службы при этом работает — потому разбор заголовка на C#.
 
 Документация Tizen пишет, что гибрид (web + .NET) на профиле TV официально не
 поддерживается и собирается Tizen Studio CLI, но пакет no-cover на телевизорах
 ставится и работает; `tools/build.py` собирает такой же zip сам.
 
-### Tizen 5.5: FFmpeg библиотекой (TorrStream-ffprobe-5.5.wgt)
+### Опыт с FFmpeg-библиотекой
 
-На Tizen 5.5 службе запрещено запускать программы: и ffprobe-файл, и его копия
-в памяти (memfd) дают «Operation not permitted». Поэтому для 5.5 — свой пакет
-службы: вместо `res/ffprobe` в нём `res/libtsprobe.so` — урезанный FFmpeg (только
+`build.py --ffprobe --lib`, TorrStream-ffprobe-lib.wgt):
+вместо `res/ffprobe` — `res/libtsprobe.so` — урезанный FFmpeg (только
 разбор контейнеров и http) с обёрткой `ffprobe-service/native/tsprobe.c`. Служба
 загружает её к себе (`LibProbe.cs`, dlopen) — это не запуск программы — и
 отдаёт тот же JSON, что ffprobe. Сборка — `tools/build_tsprobe.sh` (Linux:
 zig cc под arm-linux-gnueabi, glibc 2.17 — Tizen на ARM armel/softfp, библиотеку
 с hard-float загрузчик не берёт), затем
-`python tools/build.py --ffprobe --lib tools/.cache/libtsprobe.so`; в CI — шаг «wgt для
-Tizen 5.5». «Об устройстве» → «ffprobe на ТВ» — «FFmpeg библиотекой».
+`python tools/build.py --ffprobe --lib tools/.cache/libtsprobe.so`. На Tizen 5.5
+не загрузилась (см. выше), в CI не собирается.
 
 ## Что в пакете
 
@@ -117,18 +130,17 @@ Tizen 5.5». «Об устройстве» → «ffprobe на ТВ» — «FFmpe
 
 ## Сборка
 
-`python tools/build.py` — TorrStream-Tizen.wgt (только запускалка).
-`python tools/build.py --ffprobe` — TorrStream-ffprobe.wgt (`tools/build.py` зовёт
-`tools/build_ffprobe.py`): нужен .NET SDK (Tizen.NET.Sdk скачается сам), ffprobe
-кэшируется в `tools/.cache`. С `--lib libtsprobe.so` — TorrStream-ffprobe-5.5.wgt.
-
+`python tools/build.py` — TorrStream-Tizen.wgt (запускалка + служба дорожек;
+`tools/build.py` зовёт `tools/build_ffprobe.py`, нужен .NET SDK — Tizen.NET.Sdk
+скачается сам). `--plain` — без службы. `python tools/build.py --ffprobe` —
+TorrStream-ffprobe.wgt (ffprobe кэшируется в `tools/.cache`).
 
 Тег `v*` → workflow `build.yml`: версия из тега → `tools/build.py` → релиз с
-`TorrStream-Tizen.wgt`, `TorrStream-ffprobe.wgt` и `TorrStream-ffprobe-5.5.wgt` (постоянное имя:
+`TorrStream-Tizen.wgt` и `TorrStream-ffprobe.wgt` (постоянное имя:
 `releases/latest/download/TorrStream-Tizen.wgt`).
 
 Локально: `python tools/build.py` (без подписи) или
-`python tools/build.py --sign <профиль>` (Tizen CLI в PATH).
+`python tools/build.py --sign <профиль>` (Tizen CLI в PATH, без службы).
 
 Пакет из CI не подписан: сертификат Samsung привязан к DUID телевизора, так
 что подписывает тот, кто ставит.
@@ -144,7 +156,7 @@ Tizen 5.5». «Об устройстве» → «ffprobe на ТВ» — «FFmpe
    телевизора), затем
    `tizen package -t wgt -s <профиль> -- app` и
    `sdb connect <IP>` → `tizen install -n TorrStream-Tizen.wgt -t <устройство>`.
-Служба ffprobe — по желанию, так же: `TorrStream-ffprobe.wgt` (Tizen 6+) или
-`TorrStream-ffprobe-5.5.wgt` (Tizen 5.5). Если раньше стоял TorrStream 1.1.3
-со службой внутри — сначала переустановите TorrStream-Tizen.wgt, потом ставьте
-пакет службы: иначе два пакета с одной службой `online.torrstream.ffprobe`.
+Служба дорожек ставится вместе с TorrStream-Tizen.wgt. ffprobe — по желанию,
+так же: `TorrStream-ffprobe.wgt` (Tizen 6+). Ставившийся для проверки
+TorrStream-ffprobe-5.5.wgt больше не нужен — удалите его: его работу делает
+служба внутри TorrStream.

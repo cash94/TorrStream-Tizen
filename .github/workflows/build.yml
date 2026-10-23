@@ -4,9 +4,10 @@
 # сертификат Samsung привязан к телевизору (DUID), поэтому подписывает его тот,
 # кто ставит, — Apps2Samsung или Tizen Studio (см. README). Постоянное имя —
 # TorrStream-Tizen.wgt (releases/latest/download/TorrStream-Tizen.wgt).
-# Рядом — отдельный TorrStream-ffprobe.wgt: гибрид с .NET-службой ffprobe
-# (названия дорожек прямо с телевизора), как TorrServer у no-cover/torr-streaming,
-# — поэтому нужен .NET; сам TorrStream-Tizen.wgt её не несёт.
+# TorrStream-Tizen.wgt — гибрид с .NET-службой дорожек (разбор заголовка
+# MKV/MP4, работает и на Tizen 5.5), рядом — отдельный TorrStream-ffprobe.wgt
+# (служба с ffprobe, Tizen 6+), как TorrServer у no-cover/torr-streaming, —
+# поэтому нужен .NET.
 # Запуск вручную (Actions → build → Run workflow) — только сборка, wgt в артефакте.
 name: build
 
@@ -36,18 +37,6 @@ jobs:
           python3 tools/build.py $VER --ffprobe
           ls -la dist
 
-      # Tizen 5.5: службе там нельзя запускать программы — свой
-      # TorrStream-ffprobe-5.5.wgt с FFmpeg библиотекой (libtsprobe.so, zig cc под
-      # armel/glibc 2.17). Не собралась — остальные wgt всё равно выходят
-      - name: ffprobe для Tizen 5.5
-        continue-on-error: true
-        run: |
-          VER=""
-          case "$GITHUB_REF" in refs/tags/v*) V="${GITHUB_REF_NAME#v}"; VER="--version ${V%%-*}";; esac
-          bash tools/build_tsprobe.sh tools/.cache
-          python3 tools/build.py $VER --ffprobe --lib tools/.cache/libtsprobe.so
-          ls -la dist
-
       - name: Релиз
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -57,7 +46,7 @@ jobs:
           case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
           gh release create "$GITHUB_REF_NAME" dist/*.wgt $PRE \
             --title "TorrStream для Samsung Tizen ${GITHUB_REF_NAME#v}" \
-            --notes "Приложение TorrStream для телевизоров Samsung (Tizen) — TorrStream-Tizen.wgt. По желанию — служба ffprobe отдельным пакетом: названия аудиодорожек и субтитров (Full, Forced, SDH) читаются прямо на телевизоре; TorrStream-ffprobe.wgt для Tizen 6+, TorrStream-ffprobe-5.5.wgt для Tizen 5.5. Пакеты без подписи: установите его через Apps2Samsung (Custom WGT) или Tizen Studio — они подпишут его вашим сертификатом Samsung. Подробнее — в README."
+            --notes "Приложение TorrStream для телевизоров Samsung (Tizen) — TorrStream-Tizen.wgt. Названия аудиодорожек и субтитров (Full, Forced, SDH) читаются прямо на телевизоре: MKV и MP4 — встроенной службой (и на Tizen 5.5), прочие контейнеры — ffprobe из отдельного TorrStream-ffprobe.wgt (по желанию, Tizen 6+). Пакеты без подписи: установите его через Apps2Samsung (Custom WGT) или Tizen Studio — они подпишут его вашим сертификатом Samsung. Подробнее — в README."
 
       - name: Артефакт
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}

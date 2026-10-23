@@ -80,7 +80,7 @@
           if (!d) { next(); return; }
           if (d.checking) { setTimeout(check, 1000); show('Служба запущена, проверяю ffprobe…'); return; }
           if (d.ffprobe) {
-            show('Служба работает' + (d.exec === 'библиотека' ? ' (FFmpeg библиотекой)' : ''), 'ok',
+            show('Служба работает' + (d.exec === 'разбор' ? ' (разбор MKV/MP4)' : d.exec === 'библиотека' ? ' (FFmpeg библиотекой)' : ''), 'ok',
               d.ffprobe + ' · ' + base.replace(/^http:\/\//, ''));
           } else {
             show('Служба запущена, но ffprobe не работает', 'bad', d.error || '');

@@ -1,7 +1,8 @@
 """
-Служба ffprobe для Samsung Tizen (ffprobe-service/) — .NET-часть
-TorrStream-Tizen.wgt. Обычно её собирает tools/build.py внутрь wgt гибридом,
-как no-cover/torr-streaming; отдельно, для проверки:
+Служба дорожек для Samsung Tizen (ffprobe-service/) — .NET-часть
+TorrStream-Tizen.wgt (разбор MKV/MP4) и TorrStream-ffprobe.wgt (ffprobe).
+Обычно её собирает tools/build.py внутрь wgt гибридом, как
+no-cover/torr-streaming; отдельно, для проверки:
 
   python tools/build_ffprobe.py [--version 1.1.3] [--out dist]   → TorrStream-ffprobe.tpk
 
@@ -32,13 +33,15 @@ def ffprobe_binary():
     return path
 
 
-def build_tpk(version=None):
-    """Собрать .tpk службы во временном каталоге; путь к нему (каталог — забота вызывающего)"""
+def build_tpk(version=None, with_ffprobe=True):
+    """Собрать .tpk службы во временном каталоге; путь к нему (каталог — забота вызывающего).
+    with_ffprobe=False — без res/ffprobe (служба внутри TorrStream-Tizen.wgt: только разбор)"""
     work = tempfile.mkdtemp()
     proj = os.path.join(work, 'ffprobe-service')
     shutil.copytree(SRC, proj, ignore=shutil.ignore_patterns('bin', 'obj', 'ffprobe'))
     os.makedirs(os.path.join(proj, 'res'), exist_ok=True)
-    shutil.copyfile(ffprobe_binary(), os.path.join(proj, 'res', 'ffprobe'))
+    if with_ffprobe:
+        shutil.copyfile(ffprobe_binary(), os.path.join(proj, 'res', 'ffprobe'))
 
     if version:
         if not re.match(r'^\d+\.\d+\.\d+$', version):

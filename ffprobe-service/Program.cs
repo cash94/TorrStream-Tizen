@@ -1,15 +1,18 @@
-// Служба ffprobe для TorrStream на Samsung Tizen — обвязка Tizen.
-//
-// Веб-приложению Tizen запускать программы нельзя, поэтому ffprobe живёт здесь:
-// .NET-служба внутри TorrStream-Tizen.wgt (гибрид, как TorrServer от
-// no-cover/torr-streaming) стартует вместе с телевизором и отвечает по HTTP
-// на порту 8095 (ProbeServer.cs). Фронтенд TorrStream спрашивает её первой,
-// когда ищет названия дорожек файла (player.js: directProbeStart).
+// Служба названий дорожек для TorrStream на Samsung Tizen — обвязка Tizen.
+// Одна программа, два пакета (гибриды, как TorrServer от no-cover/torr-streaming),
+// режим — по appid (tools/build.py его и задаёт):
+//   online.torrstream.tracks — внутри TorrStream-Tizen.wgt, порт 8096: только
+//     разбор заголовка MKV/MP4 на C# (HeaderProbe.cs) — работает везде, и на 5.5;
+//   online.torrstream.ffprobe — TorrStream-ffprobe.wgt (Tizen 6+), порт 8095: ffprobe.
+// Стартуют вместе с телевизором и отвечают по HTTP (ProbeServer.cs). Фронтенд
+// спрашивает сначала разбор, потом ffprobe, потом CUB (player.js: directProbeStart).
 //
 // ffprobe — статическая сборка armhf (johnvansickle.com), та же, что в
 // TorrStream-webOS. Из res/ пакета её копируем в каталог данных и делаем
 // исполняемой. Tizen 5.5 запускать файл оттуда не даёт («Operation not
 // permitted») — тогда запуск из памяти (MemoryCopy ниже), как у no-cover.
+// Не дал и его (Tizen 5.5) или ffprobe в пакете нет (TorrStream-ffprobe-5.5.wgt) —
+// разбор заголовка MKV/MP4 на C# (HeaderProbe.cs).
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -20,6 +23,8 @@ namespace TorrStreamFfprobe
     class Program : ServiceApplication
     {
         const int Port = 8095;
+        const int TracksPort = 8096;
+        const string TracksAppId = "online.torrstream.tracks";
         const string LogTag = "TorrStreamFfprobe";
 
         ProbeServer server;
@@ -28,6 +33,20 @@ namespace TorrStreamFfprobe
         protected override void OnCreate()
         {
             base.OnCreate();
+            // Служба внутри TorrStream-Tizen.wgt: только разбор заголовка, без
+            // ffprobe и без уведомления на каждом включении телевизора
+            string appId = null;
+            try { appId = Application.Current.ApplicationInfo.ApplicationId; } catch { }
+            if (appId == TracksAppId)
+            {
+                try
+                {
+                    server = new ProbeServer(TracksPort, null, null, msg => Tizen.Log.Info(LogTag, msg)) { Name = "TorrStream tracks" };
+                    server.Start();
+                }
+                catch (Exception e) { Tizen.Log.Error(LogTag, "listen: " + e); }
+                return;
+            }
             // Сборка для Tizen 5.5 (tools/build.py --lib): вместо ffprobe —
             // libtsprobe.so, FFmpeg внутри процесса. Программы там запускать нельзя
             // libNote — что с библиотекой, для /version: где искали и почему не вышло
@@ -61,7 +80,7 @@ namespace TorrStreamFfprobe
                 server = new ProbeServer(Port, path, stageError, msg => Tizen.Log.Info(LogTag, msg), MemoryCopy);
                 server.VersionChecked = ShowToast;
                 server.Start();
-                if (path == null) ShowToast("TorrStream: ffprobe не готов — " + (stageError ?? "ошибка"));
+                // Нет ffprobe — ProbeServer сам перейдёт на разбор заголовка (и скажет об этом)
             }
             catch (Exception e)
             {
