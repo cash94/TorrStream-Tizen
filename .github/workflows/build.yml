@@ -1,11 +1,12 @@
 # Сборка wgt для Samsung Tizen по тегу v* (git tag v1.0.0 && git push origin v1.0.0).
 #
-# Версия пакета берётся из тега (tools/build.py --version). Пакет без подписи:
+# Версия пакетов берётся из тега (tools/build.py --version). Пакет без подписи:
 # сертификат Samsung привязан к телевизору (DUID), поэтому подписывает его тот,
 # кто ставит, — Apps2Samsung или Tizen Studio (см. README). Постоянное имя —
 # TorrStream-Tizen.wgt (releases/latest/download/TorrStream-Tizen.wgt).
-# С 1.1.3 wgt гибридный: внутри .NET-служба ffprobe (названия дорожек прямо с
-# телевизора), как TorrServer у no-cover/torr-streaming, — поэтому нужен .NET.
+# Рядом — отдельный TorrStream-ffprobe.wgt: гибрид с .NET-службой ffprobe
+# (названия дорожек прямо с телевизора), как TorrServer у no-cover/torr-streaming,
+# — поэтому нужен .NET; сам TorrStream-Tizen.wgt её не несёт.
 # Запуск вручную (Actions → build → Run workflow) — только сборка, wgt в артефакте.
 name: build
 
@@ -32,18 +33,19 @@ jobs:
           VER=""
           case "$GITHUB_REF" in refs/tags/v*) V="${GITHUB_REF_NAME#v}"; VER="--version ${V%%-*}";; esac
           python3 tools/build.py $VER
+          python3 tools/build.py $VER --ffprobe
           ls -la dist
 
-      # Tizen 5.5: службе там нельзя запускать программы — отдельный
-      # TorrStream-Tizen-5.5.wgt с FFmpeg библиотекой (libtsprobe.so, zig cc под
-      # armhf/glibc 2.17). Не собралась — основной wgt всё равно выходит
-      - name: wgt для Tizen 5.5
+      # Tizen 5.5: службе там нельзя запускать программы — свой
+      # TorrStream-ffprobe-5.5.wgt с FFmpeg библиотекой (libtsprobe.so, zig cc под
+      # armel/glibc 2.17). Не собралась — остальные wgt всё равно выходят
+      - name: ffprobe для Tizen 5.5
         continue-on-error: true
         run: |
           VER=""
           case "$GITHUB_REF" in refs/tags/v*) V="${GITHUB_REF_NAME#v}"; VER="--version ${V%%-*}";; esac
           bash tools/build_tsprobe.sh tools/.cache
-          python3 tools/build.py $VER --lib tools/.cache/libtsprobe.so
+          python3 tools/build.py $VER --ffprobe --lib tools/.cache/libtsprobe.so
           ls -la dist
 
       - name: Релиз
@@ -55,7 +57,7 @@ jobs:
           case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
           gh release create "$GITHUB_REF_NAME" dist/*.wgt $PRE \
             --title "TorrStream для Samsung Tizen ${GITHUB_REF_NAME#v}" \
-            --notes "Приложение TorrStream для телевизоров Samsung (Tizen). Внутри — служба ffprobe: названия аудиодорожек и субтитров (Full, Forced, SDH) читаются прямо на телевизоре. Пакет без подписи: установите его через Apps2Samsung (Custom WGT) или Tizen Studio — они подпишут его вашим сертификатом Samsung. Подробнее — в README."
+            --notes "Приложение TorrStream для телевизоров Samsung (Tizen) — TorrStream-Tizen.wgt. По желанию — служба ffprobe отдельным пакетом: названия аудиодорожек и субтитров (Full, Forced, SDH) читаются прямо на телевизоре; TorrStream-ffprobe.wgt для Tizen 6+, TorrStream-ffprobe-5.5.wgt для Tizen 5.5. Пакеты без подписи: установите его через Apps2Samsung (Custom WGT) или Tizen Studio — они подпишут его вашим сертификатом Samsung. Подробнее — в README."
 
       - name: Артефакт
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}

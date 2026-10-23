@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>TorrStream ffprobe</title>
+<!--
+  Страница пакета TorrStream ffprobe. Служба (online.torrstream.ffprobe) и так
+  стартует вместе с телевизором; здесь — запустить её вручную (после установки,
+  если система её выгрузила) и показать, работает ли ffprobe. Ответ службы — по
+  IP телевизора: до localhost страница на ТВ не достаёт. «Назад» — выход.
+  ES5: Tizen 3–5 — движок Chrome 47–69.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0b0f; color: #fff; overflow: hidden; }
+  body { font-family: "SamsungOne", Roboto, Arial, sans-serif; }
+  .wrap { position: absolute; top: 50%; left: 50%; width: 1100px; margin-left: -550px; -webkit-transform: translateY(-50%); transform: translateY(-50%); text-align: center; }
+  h1 { font-size: 52px; margin: 0 0 24px; }
+  h1 span { color: #ff8c00; }
+  .status { font-size: 30px; color: #c8c8d2; min-height: 40px; }
+  .ok { color: #5ad17a; } .bad { color: #ff6a6a; }
+  .detail { font-size: 22px; color: #6b6b78; margin-top: 18px; word-wrap: break-word; }
+  .hint { font-size: 22px; color: #6b6b78; margin-top: 40px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Torr<span>Stream</span> ffprobe</h1>
+  <p class="status" id="status">Запускаю службу…</p>
+  <p class="detail" id="detail"></p>
+  <p class="hint">Служба читает названия аудиодорожек и субтитров прямо на телевизоре — TorrStream найдёт её сам.<br>«Назад» — выход</p>
+</div>
+<script>
+(function () {
+  var SERVICE = 'online.torrstream.ffprobe';
+  var PORT = 8095;
+  var statusEl = document.getElementById('status');
+  var detailEl = document.getElementById('detail');
+
+  function show(text, cls, detail) {
+    statusEl.textContent = text;
+    statusEl.className = 'status' + (cls ? ' ' + cls : '');
+    detailEl.textContent = detail || '';
+  }
+
+  function exitApp() {
+    try { tizen.application.getCurrentApplication().exit(); } catch (e) { try { window.close(); } catch (e2) { } }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.keyCode === 10009 || e.keyCode === 27 || e.keyCode === 13) { e.preventDefault(); exitApp(); }
+  });
+
+  function bases() {
+    var list = [], ip = '';
+    try { if (window.webapis && webapis.network && webapis.network.getIp) ip = webapis.network.getIp() || ''; } catch (e) { }
+    if (ip) list.push('http://' + ip + ':' + PORT);
+    list.push('http://127.0.0.1:' + PORT);
+    return list;
+  }
+
+  // /version по очереди по адресам; служба после запуска поднимается не сразу —
+  // спрашиваем до 20 раз раз в секунду
+  var tries = 0;
+  function check() {
+    var list = bases(), i = 0;
+    var next = function () {
+      if (i >= list.length) {
+        if (++tries < 20) { setTimeout(check, 1000); return; }
+        show('Служба не отвечает', 'bad', 'Перезагрузите телевизор: служба запускается при его включении');
+        return;
+      }
+      var base = list[i++], x = new XMLHttpRequest();
+      try {
+        x.open('GET', base + '/version', true);
+        x.timeout = 4000;
+        x.onload = function () {
+          var d = null;
+          try { d = JSON.parse(x.responseText); } catch (e) { }
+          if (!d) { next(); return; }
+          if (d.checking) { setTimeout(check, 1000); show('Служба запущена, проверяю ffprobe…'); return; }
+          if (d.ffprobe) {
+            show('Служба работает' + (d.exec === 'библиотека' ? ' (FFmpeg библиотекой)' : ''), 'ok',
+              d.ffprobe + ' · ' + base.replace(/^http:\/\//, ''));
+          } else {
+            show('Служба запущена, но ffprobe не работает', 'bad', d.error || '');
+          }
+        };
+        x.onerror = next;
+        x.ontimeout = next;
+        x.send();
+      } catch (e) { next(); }
+    };
+    next();
+  }
+
+  try { tizen.application.launch(SERVICE, function () { }, function () { }); } catch (e) { }
+  setTimeout(check, 1000);
+})();
+</script>
+</body>
+</html>

@@ -28,6 +28,10 @@ namespace TorrStreamFfprobe
 
         public LibProbe(string path)
         {
+            // Сначала пустой dlerror(): .NET привязывает P/Invoke при первом вызове
+            // (сам делает dlopen/dlsym) и этим стирает ошибку нашего dlopen — на
+            // Tizen 5.5 вместо причины приходило «?»
+            dlerror();
             IntPtr h = dlopen(path, RTLD_NOW);
             if (h == IntPtr.Zero) throw new Exception("dlopen: " + LastDlError());
             versionFn = Get<VersionFn>(h, "tsprobe_version");

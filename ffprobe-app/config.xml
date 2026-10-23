@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TorrStream ffprobe — отдельный пакет со службой ffprobe (ffprobe-service/),
+  как TorrServer у no-cover/torr-streaming: TorrStream-Tizen.wgt её не несёт и
+  весит сотни килобайт. Служба отвечает на :8095, TorrStream спрашивает её по IP
+  телевизора (player.js: tizenFfprobeGet); нет её — названия дорожек от CUB.
+  Эта страница — только запуск службы и её состояние (index.html).
+  Собирается гибридом: tools/build.py --ffprobe (для 5.5 — ещё --lib).
+  Профиль «tv» и привилегии службы в корневом config.xml добавляет build.py.
+-->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://torrstream.online/tizen-ffprobe" version="1.0.0" viewmodes="maximized">
+    <tizen:application id="TorrFfprb1.Ffprobe" package="TorrFfprb1" required_version="2.3"/>
+    <tizen:profile name="tv"/>
+    <name>TorrStream ffprobe</name>
+    <description>Названия дорожек фильмов для TorrStream — ffprobe на телевизоре</description>
+    <author href="https://github.com/cash94">TorrStream</author>
+    <icon src="icon.png"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+
+    <access origin="*" subdomains="true"/>
+
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable"
+                   encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>
