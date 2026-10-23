@@ -30,6 +30,7 @@ TorrStream находит службу сам — по HTTP на IP телеви
 --probe — проверочный пакет из probe/ (TorrStream-Tizen-Probe.wgt, свой id).
 """
 import argparse, os, re, shutil, subprocess, sys, tempfile, zipfile
+import xml.etree.ElementTree as ET
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -62,7 +63,19 @@ if args.version:
         raise SystemExit('версия должна быть вида 1.0.1: ' + args.version)
     cfg = re.sub(r'(<widget\b[^>]*\bversion=")[^"]*(")', r'\g<1>' + args.version + r'\g<2>', cfg, count=1)
     open(cfg_path, 'w', encoding='utf-8').write(cfg)
-version = re.search(r'<widget\b[^>]*\bversion="([^"]+)"', cfg).group(1)
+
+
+def check_xml(text, what):
+    # Установщик Tizen с битым XML (хотя бы «--» в комментарии) отвечает только
+    # «Invalid App. Could not read xml entry» — ловим это при сборке
+    try:
+        ET.fromstring(text.encode('utf-8'))
+    except ET.ParseError as e:
+        raise SystemExit('%s: неверный XML — %s' % (what, e))
+
+
+check_xml(cfg, 'config.xml')
+version =re.search(r'<widget\b[^>]*\bversion="([^"]+)"', cfg).group(1)
 package = re.search(r'<tizen:application\b[^>]*\bpackage="([^"]+)"', cfg).group(1)
 
 os.makedirs(args.out, exist_ok=True)
@@ -105,6 +118,8 @@ else:
         if ('name="%s"' % priv) not in cfg:
             extra += '    <tizen:privilege name="%s"/>\n' % priv
     root_cfg = cfg.replace('</widget>', extra + '</widget>') if extra else cfg
+    check_xml(root_cfg, 'config.xml (корень)')
+    check_xml(manifest, 'tizen-manifest.xml')
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('config.xml', root_cfg)
         z.writestr('tizen-manifest.xml', manifest)

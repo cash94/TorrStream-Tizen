@@ -5,7 +5,9 @@
   весит сотни килобайт. Служба отвечает на :8095, TorrStream спрашивает её по IP
   телевизора (player.js: tizenFfprobeGet); нет её — названия дорожек от CUB.
   Эта страница — только запуск службы и её состояние (index.html).
-  Собирается гибридом: tools/build.py --ffprobe (для 5.5 — ещё --lib).
+  Собирается гибридом: tools/build.py с ключом ffprobe (для 5.5 — ещё lib).
+  Два дефиса подряд в XML-комментарии запрещены: установщик Tizen такой
+  config.xml не читает («Could not read xml entry»).
   Профиль «tv» и привилегии службы в корневом config.xml добавляет build.py.
 -->
 <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
