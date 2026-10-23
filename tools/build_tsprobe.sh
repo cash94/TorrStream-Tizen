@@ -59,6 +59,11 @@ cd "ffmpeg-$FFMPEG_VER"
   --enable-demuxer=matroska,mov,avi,mpegts,mpegps,flv,asf,ogg,wav,mp3,aac,ac3,eac3,dts,flac,h264,hevc \
   --enable-small
 
+# configure находит sysctl, а в заголовках glibc из zig (новых) sys/sysctl.h уже
+# нет — libavutil/cpu.c не собирался. На Linux FFmpeg он не нужен
+sed -i 's/#define HAVE_SYSCTL 1/#define HAVE_SYSCTL 0/' config.h
+grep -n 'HAVE_SYSCTL' config.h || true
+
 make -j"$(nproc)"
 
 echo "== libtsprobe.so"
