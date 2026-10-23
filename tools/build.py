@@ -110,6 +110,9 @@ else:
             z.writestr(info, tpk.read(n))
         add_dir(z, app, 'res/wgt/')
         if args.lib:
+            # И в res/: каталог lib/ гибридного wgt установщик на Tizen 5.5, похоже,
+            # не раскладывает (служба его не нашла), а res/ — раскладывает
+            z.write(args.lib, 'res/libtsprobe.so')
             z.write(args.lib, 'lib/libtsprobe.so')
 
 shutil.copyfile(target, os.path.join(args.out, base + '.wgt'))

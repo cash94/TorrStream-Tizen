@@ -199,6 +199,9 @@ namespace TorrStreamFfprobe
             sb.Append("{\"name\":\"TorrStream ffprobe\",\"service\":\"").Append(ServiceVersion).Append("\",\"ffprobe\":");
             sb.Append(ffprobeVersion == null ? "null" : Quote(ffprobeVersion));
             sb.Append(",\"exec\":").Append(Quote(execMethod));
+            // Разрядность процесса службы: 32-битная libtsprobe.so (сборка для
+            // Tizen 5.5) в 64-битный процесс не загрузится
+            sb.Append(",\"arch\":").Append(Quote(System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString()));
             string lanIp = LanAddress();
             if (lanIp != null) sb.Append(",\"lan\":").Append(Quote(lanIp));
             if (fileExecError != null) sb.Append(",\"fileError\":").Append(Quote(fileExecError));

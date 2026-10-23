@@ -30,7 +30,9 @@ namespace TorrStreamFfprobe
             base.OnCreate();
             // Сборка для Tizen 5.5 (tools/build.py --lib): вместо ffprobe —
             // libtsprobe.so, FFmpeg внутри процесса. Программы там запускать нельзя
-            string libPath = FindLibrary();
+            // libNote — что с библиотекой, для /version: где искали и почему не вышло
+            string libNote;
+            string libPath = FindLibrary(out libNote);
             if (libPath != null)
             {
                 try
@@ -45,12 +47,15 @@ namespace TorrStreamFfprobe
                 catch (Exception e)
                 {
                     Tizen.Log.Error(LogTag, "libtsprobe: " + e);
+                    libNote = libPath + ": " + e.Message;
                     ShowToast("TorrStream: FFmpeg-библиотека не загрузилась — " + e.Message);
                     // и дальше, как обычно: вдруг в пакете есть и ffprobe
                 }
             }
             string stageError;
             string path = StageBinary(out stageError);
+            // Нет ни ffprobe, ни рабочей библиотеки — в ошибке и то, и другое
+            if (stageError != null && libNote != null) stageError += "; библиотека: " + libNote;
             try
             {
                 server = new ProbeServer(Port, path, stageError, msg => Tizen.Log.Info(LogTag, msg), MemoryCopy);
@@ -71,19 +76,23 @@ namespace TorrStreamFfprobe
         }
 
         /// <summary>
-        /// libtsprobe.so в пакете: lib/ рядом с res/ (так её кладёт tools/build.py)
-        /// или res/. Нет — null
+        /// libtsprobe.so в пакете: res/ (tools/build.py --lib кладёт её туда и в
+        /// lib/ — каталог lib/ гибридного wgt установщик на Tizen 5.5, похоже, не
+        /// раскладывает) или lib/ рядом с res/. Нет — null, в note — где искали
         /// </summary>
-        static string FindLibrary()
+        static string FindLibrary(out string note)
         {
+            note = null;
             try
             {
                 string res = Application.Current.DirectoryInfo.Resource.TrimEnd('/');
                 string root = Path.GetDirectoryName(res);
-                foreach (var p in new[] { Path.Combine(root, "lib", "libtsprobe.so"), Path.Combine(res, "libtsprobe.so") })
+                var candidates = new[] { Path.Combine(res, "libtsprobe.so"), Path.Combine(root, "lib", "libtsprobe.so") };
+                foreach (var p in candidates)
                     if (File.Exists(p)) return p;
+                note = "libtsprobe.so не найдена (" + string.Join(", ", candidates) + ")";
             }
-            catch { }
+            catch (Exception e) { note = "поиск libtsprobe.so: " + e.Message; }
             return null;
         }
 
