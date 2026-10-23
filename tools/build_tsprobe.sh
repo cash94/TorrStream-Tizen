@@ -21,6 +21,7 @@ TARGET=arm-linux-gnueabihf.2.17
 CPU=cortex_a9
 
 mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"   # абсолютный: дальше скрипт уходит в $WORK
 cd "$WORK"
 
 echo "== zig $ZIG_VER"

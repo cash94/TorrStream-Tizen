@@ -300,7 +300,11 @@ namespace TorrStreamFfprobe
                 try { output = libProbe(url); }
                 catch (Exception e) { error = e.Message; return null; }
             }
-            else output = RunFfprobe("-v quiet -print_format json -show_format -show_streams \"" + url + "\"", ProbeTimeoutMs, out error);
+            // -nofind_stream_info: только заголовок контейнера (названия, язык,
+            // кодек, каналы — всё там). Без него ffprobe ещё декодирует начало
+            // потоков, это мегабайты из раздачи: на Tizen 9 ответ шёл 35 с, и
+            // CUB успевал раньше
+            else output = RunFfprobe("-v quiet -print_format json -show_format -show_streams -nofind_stream_info \"" + url + "\"", ProbeTimeoutMs, out error);
             if (output == null) return null;
             if (output.TrimStart().StartsWith("{") && output.IndexOf("\"streams\"", StringComparison.Ordinal) >= 0) return output;
             if (error == null) error = "ffprobe не разобрал файл (TorrServer не отдал его?)";
