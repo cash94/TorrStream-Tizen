@@ -33,14 +33,21 @@ TorrStream (по умолчанию общий `http://torrstream.online`, ад�
 
 Скачать и запустить TorrServer из приложения, как на webOS с root или в
 Android-приложении, на Tizen нельзя: веб-приложению закрыты запуск программ и
-установка пакетов. TorrServer ставится отдельной службой (`.tpk`), например
-[no-cover/torr-streaming](https://github.com/no-cover/torr-streaming) —
-служба `tv.torr.streaming.tizen` поднимает официальный `TorrServer-linux-arm7`
-на порту 8090 при включении телевизора. Ставится так же, как TorrStream.
+установка пакетов. TorrServer ставится отдельной службой, так же, как TorrStream:
 
-В приложении: Настройки → TorrServer → «Использовать TorrServer, установленный
-на этом устройстве». Приложение проверяет `127.0.0.1:8090/echo`; если служба
-стоит, но не отвечает — просит систему её запустить.
+- [cash94/TorrServer-Tizen](https://github.com/cash94/TorrServer-Tizen) —
+  `TorrServer-Tizen.wgt`, TorrServer на C# (MonoTorrent) с API TorrServer на
+  8090; работает и на **Tizen 5.5**, где официальный TorrServer не запускается;
+- [no-cover/torr-streaming](https://github.com/no-cover/torr-streaming) —
+  служба `tv.torr.streaming.tizen` поднимает официальный `TorrServer-linux-arm7`
+  на 8090 (Tizen 6+).
+
+Обе занимают порт 8090 — ставьте одну. В приложении: Настройки → TorrServer →
+«Использовать TorrServer, установленный на этом устройстве». Приложение
+(`torrents.js: TizenTorrServer`) ищет `:8090/echo` по IP телевизора и на
+`127.0.0.1`, подставляет адрес, по которому TorrServer ответил; если служба
+стоит, но не отвечает, — просит систему её запустить. «Об устройстве» →
+«TorrServer на ТВ».
 
 ## Названия дорожек: службы на телевизоре
 
