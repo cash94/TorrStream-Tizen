@@ -35,8 +35,8 @@ TorrStream (по умолчанию общий `http://torrstream.online`, ад�
 Android-приложении, на Tizen нельзя: веб-приложению закрыты запуск программ и
 установка пакетов. TorrServer ставится отдельной службой, так же, как TorrStream:
 
-- [cash94/TorrServer-Tizen](https://github.com/cash94/TorrServer-Tizen) —
-  `TorrServer-Tizen.wgt`, TorrServer на C# (MonoTorrent) с API TorrServer на
+- [cash94/MonoServer](https://github.com/cash94/MonoServer) (бывший TorrServer-Tizen) —
+  `MonoServer-Tizen.wgt`, TorrServer на C# (MonoTorrent) с API TorrServer на
   8090; работает и на **Tizen 5.5**, где официальный TorrServer не запускается;
 - [no-cover/torr-streaming](https://github.com/no-cover/torr-streaming) —
   служба `tv.torr.streaming.tizen` поднимает официальный `TorrServer-linux-arm7`
