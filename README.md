@@ -167,3 +167,18 @@ TorrStream-ffprobe.wgt (ffprobe кэшируется в `tools/.cache`).
 так же: `TorrStream-ffprobe.wgt` (Tizen 6+). Ставившийся для проверки
 TorrStream-ffprobe-5.5.wgt больше не нужен — удалите его: его работу делает
 служба внутри TorrStream.
+
+## Лицензия
+
+Код этого репозитория — [MIT](LICENSE). Интерфейс, который запускалка берёт с
+сервера TorrStream, в репозиторий и в пакет не входит.
+
+`TorrStream-ffprobe.wgt` содержит статический `ffprobe` из проекта
+[FFmpeg](https://ffmpeg.org/) — сборку armhf с
+[johnvansickle.com](https://johnvansickle.com/ffmpeg/), она распространяется
+под **GPL v3**. Бинарник не изменён; исходный код FFmpeg —
+[ffmpeg.org/download.html](https://ffmpeg.org/download.html)
+(git: <https://git.ffmpeg.org/ffmpeg.git>). Лицензия MIT на `ffprobe` не
+распространяется. `TorrStream-Tizen.wgt` FFmpeg не содержит. Опытная
+`libtsprobe.so` (`tools/build_tsprobe.sh`, в релизы не входит) — тоже код
+FFmpeg, под его лицензией (LGPL/GPL, по ключам сборки).
