@@ -242,6 +242,15 @@
     document.close();
   }
 
+  function fromPreviewTile() {
+    try {
+      var req = tizen.application.getCurrentApplication().getRequestedAppControl();
+      var data = (req && req.appControl && req.appControl.data) || [];
+      for (var i = 0; i < data.length; i++) if (data[i].key === 'PAYLOAD') return true;
+    } catch (e) { }
+    return false;
+  }
+
   function start() {
     var url = saved();
     // Перезагрузка интерфейса (location.reload во фронтенде) — сразу на сервер
@@ -252,6 +261,10 @@
       boot(booted);
       return;
     }
+    // Открыли карточкой Smart Hub Preview — человек уже выбрал фильм, отсчёт
+    // для смены адреса ему ни к чему. Саму карточку откроет фронтенд
+    // (js/tizen-preview.js), PAYLOAD он читает сам
+    if (fromPreviewTile()) { go(url); return; }
     var left = COUNTDOWN;
     statusEl.textContent = 'Открываю ' + url.replace(/^https?:\/\//, '') + '…';
     hintEl.textContent = 'ОК — изменить адрес сервера';

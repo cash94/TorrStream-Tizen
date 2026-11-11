@@ -33,6 +33,27 @@
          телевизора — до localhost она на ТВ не достаёт -->
     <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
 
+    <!-- Smart Hub Preview: карточки над ярлыком приложения в Smart Hub, как
+         каналы Android TV. Ряды собирает фронтенд (js/tizen-preview.js) и
+         отдаёт службе preview/service.js, а она системе
+         (webapis.preview.setPreviewData). Система и сама будит службу раз в
+         ~10 минут и после включения телевизора: тогда служба повторяет
+         последние сохранённые карточки -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/use.preview" value="bg_service"/>
+    <tizen:service id="TorrStrm01.preview" auto-restart="false" on-boot="false">
+        <tizen:content src="preview/service.js"/>
+        <tizen:name>TorrStream preview</tizen:name>
+        <tizen:icon src="icon.png"/>
+        <tizen:description>Smart Hub Preview</tizen:description>
+        <tizen:category name="http://tizen.org/category/service"/>
+    </tizen:service>
+    <!-- Нажатие на карточку Smart Hub: запущенное приложение не
+         перезагружается, а получает событие appcontrol с PAYLOAD -->
+    <tizen:app-control>
+        <tizen:src name="index.html" reload="disable"/>
+        <tizen:operation name="http://samsung.com/appcontrol/operation/eden_resume"/>
+    </tizen:app-control>
+
     <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable"
                    encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>
