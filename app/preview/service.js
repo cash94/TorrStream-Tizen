@@ -19,10 +19,27 @@ var fs = null;
 try { fs = require('fs'); } catch (e) { }
 
 var FILE_NAME = 'smarthub-preview.json';
+// Ответ приложению (js/tizen-preview.js во фронтенде): что сказал Smart Hub.
+// Приложение не запущено (будила система) — порта нет, и ладно
+var APP_ID = 'TorrStrm01.TorrStream';
+var STATUS_PORT = 'TS_PREVIEW_STATUS';
 var exited = false;
+var fromApp = false;
 
 function log(msg) {
     try { console.log('[TorrStream preview] ' + msg); } catch (e) { }
+}
+
+function reply(result, message) {
+    if (!fromApp) return;
+    try {
+        var port = tizen.messageport.requestRemoteMessagePort(APP_ID, STATUS_PORT);
+        var data = [{ key: 'result', value: result }];
+        if (message) data.push({ key: 'message', value: String(message) });
+        port.sendMessage(data);
+    } catch (e) {
+        log('ответ приложению: ' + e.message);
+    }
 }
 
 function exit() {
@@ -70,23 +87,29 @@ function requestedPreview() {
 }
 
 function publish(json) {
+    var fail = function (msg) {
+        log(msg);
+        reply('error', msg);
+        exit();
+    };
     try {
         JSON.parse(json);
     } catch (e) {
-        log('битый JSON');
-        return exit();
+        return fail('битый JSON карточек');
+    }
+    if (typeof webapis === 'undefined' || !webapis.preview || typeof webapis.preview.setPreviewData !== 'function') {
+        return fail('в службе нет webapis.preview');
     }
     try {
         webapis.preview.setPreviewData(json, function () {
             log('карточки переданы');
+            reply('ok');
             exit();
         }, function (e) {
-            log('setPreviewData: ' + (e && e.message));
-            exit();
+            fail('setPreviewData: ' + ((e && (e.message || e.name)) || 'ошибка'));
         });
     } catch (e) {
-        log('setPreviewData: ' + e.message);
-        exit();
+        fail('setPreviewData: ' + e.message);
     }
 }
 
@@ -98,7 +121,11 @@ module.exports.onStart = function () {
 
 module.exports.onRequest = function () {
     var json = requestedPreview();
-    if (json) save(json);
+    fromApp = !!json;
+    if (json) {
+        reply('started');
+        save(json);
+    }
     else json = load();
     if (!json) return exit();
     publish(json);
