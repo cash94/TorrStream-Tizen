@@ -117,6 +117,21 @@ zig cc под arm-linux-gnueabi, glibc 2.17 — Tizen на ARM armel/softfp, б�
 `python tools/build.py --ffprobe --lib tools/.cache/libtsprobe.so`. На Tizen 5.5
 не загрузилась (см. выше), в CI не собирается.
 
+## Трейлеры RuTube с телевизора
+
+Трейлер ищется и играет с телевизора, мимо сервера TorrStream (как в
+Android-приложении). RuTube не отдаёт `Access-Control-Allow-Origin`, поэтому:
+- API RuTube (поиск, `play/options`) страница спрашивает у службы дорожек:
+  `GET http://<IP телевизора>:8096/rutube?url=https://rutube.ru/api/…`
+  (`ffprobe-service/Rutube.cs`). Только `https://rutube.ru/api/…` и только с
+  самого телевизора; в `/version` службы — `"rutube": true` (служба 1.2.0+);
+- видео (плейлисты и сегменты) играет плеер телевизора прямо с RuTube через
+  `<video>` — медиаплеер CORS не проверяет.
+
+Нет службы (старое приложение) — API через сервер; прямое видео не пошло — этот
+и следующие ролики через прокси сервера. Логика — во фронтенде
+(`catalog.js: rutubeVideoDirect, rutubeDeviceJson`).
+
 ## Что в пакете
 
 `app/`:

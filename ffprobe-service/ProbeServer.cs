@@ -4,6 +4,9 @@
 //   GET /version             — {"name":"TorrStream ffprobe","service":"1.0.0","ffprobe":"<строка версии>"}
 //   GET /ffprobe?url=<адрес> — JSON ffprobe (-show_format -show_streams) файла
 //                              по этому адресу (TorrServer /stream…)
+//   GET /rutube?url=<адрес>  — ответ API RuTube (https://rutube.ru/api/…) как
+//                              есть: поиск трейлера с телевизора, мимо сервера
+//                              TorrStream (Rutube.cs)
 // Нет ffprobe или система не даёт его запустить (Tizen 5.5) — тот же JSON из
 // разбора заголовка MKV/MP4 на C# (HeaderProbe.cs), в /version exec «разбор».
 // Ответы с Access-Control-Allow-Origin: * — страница TorrStream лежит в
@@ -25,7 +28,7 @@ namespace TorrStreamFfprobe
 {
     public class ProbeServer
     {
-        public const string ServiceVersion = "1.1.0";
+        public const string ServiceVersion = "1.2.0";
         // «TorrStream ffprobe» (8095) или «TorrStream tracks» (8096, только разбор)
         public string Name = "TorrStream ffprobe";
         const int ProbeTimeoutMs = 60000;
@@ -154,6 +157,15 @@ namespace TorrStreamFfprobe
                         else Respond(stream, 500, "Error", Json("error", error));
                         return;
                     }
+                    if (path == "/rutube")
+                    {
+                        int status;
+                        string error;
+                        string json = Rutube.Get(QueryParam(query, "url"), out status, out error);
+                        if (json != null) Respond(stream, 200, "OK", json);
+                        else Respond(stream, status, "Error", Json("error", error));
+                        return;
+                    }
                     Respond(stream, 404, "Not Found", Json("error", "нет такого адреса"));
                 }
                 catch (Exception e)
@@ -227,6 +239,8 @@ namespace TorrStreamFfprobe
             sb.Append("{\"name\":").Append(Quote(Name)).Append(",\"service\":\"").Append(ServiceVersion).Append("\",\"ffprobe\":");
             sb.Append(ffprobeVersion == null ? "null" : Quote(ffprobeVersion));
             sb.Append(",\"exec\":").Append(Quote(execMethod));
+            // Умеет /rutube (Rutube.cs) — фронтенд ищет трейлеры через службу
+            sb.Append(",\"rutube\":true");
             // Разрядность процесса службы: 32-битная libtsprobe.so (сборка для
             // Tizen 5.5) в 64-битный процесс не загрузится
             sb.Append(",\"arch\":").Append(Quote(System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString()));
