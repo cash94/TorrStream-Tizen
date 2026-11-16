@@ -34,19 +34,14 @@
     <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
 
     <!-- Smart Hub Preview: карточки над ярлыком приложения в Smart Hub, как
-         каналы Android TV. Ряды собирает фронтенд (js/tizen-preview.js) и
-         отдаёт службе preview/service.js, а она системе
-         (webapis.preview.setPreviewData). Система и сама будит службу раз в
-         ~10 минут и после включения телевизора: тогда служба повторяет
-         последние сохранённые карточки -->
-    <tizen:metadata key="http://samsung.com/tv/metadata/use.preview" value="bg_service"/>
-    <tizen:service id="TorrStrm01.preview" auto-restart="false" on-boot="false">
-        <tizen:content src="preview/service.js"/>
-        <tizen:name>TorrStream preview</tizen:name>
-        <tizen:icon src="icon.png"/>
-        <tizen:description>Smart Hub Preview</tizen:description>
-        <tizen:category name="http://tizen.org/category/service"/>
-    </tizen:service>
+         каналы Android TV и как у VoKino. Smart Hub сам раз в 10 минут (и
+         после включения ТВ) скачивает JSON с сервера: слева «Продолжить
+         просмотр», справа «В тренде на этой неделе». Кто смотрит, он не
+         сообщает: историю сервер выбирает по внешнему IP, с которого
+         отмечается открытый TorrStream (POST /api/smarthub/register).
+         До 1.2.0 здесь был bg_service со службой preview/service.js, но на
+         Tizen 5.5 нет ни веб-служб, ни webapis.preview -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/use.preview" value="endpoint_URL=http://torrstream.online/api/smarthub/preview"/>
     <!-- Нажатие на карточку Smart Hub: запущенное приложение не
          перезагружается, а получает событие appcontrol с PAYLOAD -->
     <tizen:app-control>
